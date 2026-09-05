@@ -1,0 +1,11 @@
+{
+  "backend": "file_bridge",
+  "bridge_dir": "D:\\bigqmt-data-bridge-runtime",
+  "cache_prepared": false,
+  "timeout": 60,
+  "poll_interval": 0.1,
+  "batch_size": 10,
+  "sector_root": "",
+  "instrument_fields": [],
+  "index_sectors": {}
+}

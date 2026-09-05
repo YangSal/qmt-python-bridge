@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bigqmt-data-bridge"
+version = "0.1.0a1"
+description = "Experimental read-only file bridge for QMT embedded Python"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+dependencies = ["pandas>=1.5,<3"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7,<10"]
+
+[project.scripts]
+bigqmt-bridge = "bigqmt_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bigqmt_bridge*", "qmt_bridge*"]
+
+[tool.setuptools.package-data]
+bigqmt_bridge = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
