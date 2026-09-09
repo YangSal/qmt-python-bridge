@@ -13,7 +13,7 @@
 
 `history_mode=cache_only` 为兼容默认值；`history_mode=auto` 使用 AutomaticBackend/AutomaticTransport，连接新版 worker。新 worker 的 probe 明确报告 `automatic_kline=auto-kline-v1` 和 downloads_enabled；旧 worker 不得被误认为支持自动下载。
 
-外部兼容接口 `download_history_data2(stock_list, period, start_time, end_time, *, expected_dates=None, job_id=None, callback=None)` 返回持久任务报告；未全部 verified 时抛带 report 属性的 QmtDownloadError（QmtDataError 子类）。提供 `download_status(job_id)` 只读查询及同参数/ID 续查。原调用方忽略成功返回值仍可工作。
+外部兼容接口 `download_history_data2(stock_list, period, start_time, end_time, *, expected_dates=None, job_id=None, callback=None)` 返回持久任务报告；未全部 verified 或本次预检失败时抛带 report 属性的 QmtDownloadError（QmtDataError 子类）。报告已创建后的预检失败必须保留生成的任务/请求 ID，在任务级 `errors` 中记录错误，不重写既有单元证据。提供 `download_status(job_id)` 只读查询及同参数/ID 续查；成功判据为 `state=verified` 且 `errors` 为空，旧报告缺少 errors 视为空列表。原调用方忽略成功返回值仍可工作。
 
 日期为显式 YYYYMMDD。单日任务默认 expected_dates=[该日]；多日任务必须提供已有交易日清单，清单有序唯一、落在闭区间且包含请求边界。首版不建设日历供应源、不以周一至周五猜节假日。证券去重排序；上限 10,000 个代码、366 个自然日、20,000 个证券×交易日单元，超限提交前报错，调用方分批。
 

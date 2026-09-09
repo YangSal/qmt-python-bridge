@@ -91,7 +91,7 @@ def test_old_worker_is_rejected_before_download(tmp_path):
 
 **Files:** Modify `bigqmt_bridge/cli.py`, `README.md`, `pyproject.toml`, `docs/validation.md`, `docs/release-checklist.md`, `.gitignore`; create `config.auto.example.json`, `docs/automatic-download.md`, `tests/test_auto_cli.py`.
 
-**Interfaces:** Keep existing probe/sample/compare untouched in default behavior. Add `download` with --config, --bridge-dir, --codes, --period (1d/1m/5m), --start, --end, --expected-dates CSV, --job-id, --output(required); force explicit history_mode=auto (config or CLI command scope), refuse native. Add `download-status` with --config, --bridge-dir, --job-id, --output(required), no QMT requests. CLI returns 0 only verified download, else 1 with persisted report/error and IDs. No raw market data in reports.
+**Interfaces:** Keep existing probe/sample/compare untouched in default behavior. Add `download` with --config, --bridge-dir, --codes, --period (1d/1m/5m), --start, --end, --expected-dates CSV, --job-id, --output(required); force explicit history_mode=auto (config or CLI command scope), refuse native. Add `download-status` with --config, --bridge-dir, --job-id, --output(required), no QMT requests. CLI returns 0 only for state=verified with empty job-level errors, else 1 with persisted report/error and IDs, including post-save preflight failures. No raw market data in reports.
 
 - [ ] **RED:** CLI tests call main against tmp_path, fake only slow external manager boundary when needed; assert output artifact, exit codes, ID-preserving errors, local-only status, and legacy CLI behavior.
 - [ ] Run `python -m pytest tests/test_auto_cli.py -q`, record intended failures.
