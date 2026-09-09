@@ -16,6 +16,10 @@ requests/
 running/
 responses/
 quarantine/
+records/
+states/
+client_jobs/
+response_repairs/
 *.log
 *.lock
 *.parquet

@@ -10,6 +10,7 @@ from pathlib import Path
 from .config import load_config
 from bigqmt_bridge import QmtDataError
 from bigqmt_bridge.backend import create_backend
+from bigqmt_bridge.downloads import DownloadManager, QmtDownloadError
 from bigqmt_bridge.normalize import (financial_schema, normalize_divid,
                                        normalize_financial, normalize_market, validate_market_values)
 from qmt_bridge.protocol import MAX_BYTES, atomic_json, dumps, json_value, load_json
@@ -180,6 +181,17 @@ def _csv(value):
     return [v.strip() for v in value.split(',') if v.strip()]
 
 
+def _automatic_config(args):
+    config = load_config(args.config)
+    if config.get('backend', 'file_bridge') == 'native':
+        raise ValueError('native backend is not supported by automatic download commands')
+    config['backend'] = 'file_bridge'
+    config['history_mode'] = 'auto'
+    if args.bridge_dir:
+        config['bridge_dir'] = args.bridge_dir
+    return config
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest='command', required=True)
@@ -201,9 +213,32 @@ def main(argv=None):
     sub.add_argument('left')
     sub.add_argument('right')
     sub.add_argument('--output')
+    sub = subs.add_parser('download')
+    sub.add_argument('--config', help='Explicit flat JSON configuration; no automatic discovery')
+    sub.add_argument('--bridge-dir')
+    sub.add_argument('--codes', type=_csv, required=True)
+    sub.add_argument('--period', choices=['1d', '1m', '5m'], required=True)
+    sub.add_argument('--start', required=True)
+    sub.add_argument('--end', required=True)
+    sub.add_argument('--expected-dates', type=_csv)
+    sub.add_argument('--job-id')
+    sub.add_argument('--output', required=True)
+    sub = subs.add_parser('download-status')
+    sub.add_argument('--config', help='Explicit flat JSON configuration; no automatic discovery')
+    sub.add_argument('--bridge-dir')
+    sub.add_argument('--job-id', required=True)
+    sub.add_argument('--output', required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == 'compare':
+        if args.command in ('download', 'download-status'):
+            config = _automatic_config(args)
+            if args.command == 'download':
+                manager = create_backend(config).downloads
+                report = manager.download(args.codes, args.period, args.start, args.end,
+                                          args.expected_dates, args.job_id)
+            else:
+                report = DownloadManager(None, config).status(args.job_id)
+        elif args.command == 'compare':
             errors = compare(load_json(args.left, MAX_BYTES), load_json(args.right, MAX_BYTES))
             report = {'ok': not errors, 'errors': errors}
         else:
@@ -234,10 +269,23 @@ def main(argv=None):
                 report['ok'] = not compare(report, report)
         if args.output:
             atomic_json(Path(args.output), report)
-        print(json.dumps({'ok': report['ok'], 'output': args.output, 'errors': report.get('errors', [])}, ensure_ascii=True))
-        return 0 if report['ok'] else 1
+        ok = report.get('state') == 'verified' if args.command in ('download', 'download-status') else report['ok']
+        summary = {'ok': ok, 'output': args.output, 'errors': report.get('errors', [])}
+        if 'job_id' in report:
+            summary.update(job_id=report['job_id'], state=report.get('state'))
+        print(json.dumps(summary, ensure_ascii=True))
+        return 0 if ok else 1
+    except QmtDownloadError as exc:
+        report = exc.report
+        atomic_json(Path(args.output), report)
+        print(json.dumps({'ok': False, 'output': args.output,
+                          'job_id': report.get('job_id'), 'state': report.get('state'),
+                          'errors': [str(exc)]}, ensure_ascii=True), file=sys.stderr)
+        return 1
     except Exception as exc:
         report = {'ok': False, 'errors': [type(exc).__name__ + ': ' + str(exc)]}
+        if getattr(args, 'job_id', None):
+            report['job_id'] = args.job_id
         if args.output:
             atomic_json(Path(args.output), report)
         print(json.dumps(report, ensure_ascii=True), file=sys.stderr)

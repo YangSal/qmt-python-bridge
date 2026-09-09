@@ -4,9 +4,9 @@
 
 GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridge)。Python 发行包名为 `bigqmt-data-bridge`，导入名为 `bigqmt_bridge`。
 
-**实验性 / Alpha · 只读 · 不下单 · 不自动下载历史数据**
+**实验性 / Alpha · 数据只读 · 不下单 · 自动下载仅限已结束交易日 K 线且须显式 opt-in**
 
-以上是当前发行版范围。后续目标是让数据采集与量化交易继续运行在外部 Python，通过内置薄桥自动下载、获取行情和受控交易。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)已在一个模拟终端测通股票、ETF、指数的单日自动下载与读取，以及单股 Tick/快照；正式 SDK、交易和生产切换尚未完成。实验入口及使用边界见 [qualification_v1](experiments/qualification_v1/README.md)，不要把下方只读发行版的 `download_*` 当成真实下载。
+`0.2.0a1` 新增独立的自动模式，可下载并严格校验股票、ETF、指数的 `1d`、`1m`、`5m` K 线；默认模式仍为 `history_mode=cache_only`，不会下载。自动模式不含交易、订阅、Tick、财务自动下载或生产切换，其正式新 worker 尚未完成真实终端验收。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)属于更早的 `qualification_v1`，不能代替本版本 live acceptance。
 
 本项目从一个已有数据采集项目中提取。目标是保留外部 Python 的 pandas、研究和存储环境，让内置 Python 只承担有限的数据读取。它不是完整的 `xtquant` 替代品，也不保证任意券商版本、账号权限和数据种类均可用。
 
@@ -16,7 +16,8 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 
 - [适用范围和当前状态](#适用范围和当前状态)
 - [工作原理](#工作原理)
-- [快速开始](#快速开始)
+- [快速开始（cache_only）](#快速开始cache_only)
+- [自动 K 线下载（opt-in）](#自动-k-线下载opt-in)
 - [Python 调用](#python-调用)
 - [只读采样和对照](#只读采样和对照)
 - [配置说明](#配置说明)
@@ -33,13 +34,14 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 | 能力 | 实现情况 | 尚需验证 / 限制 |
 |---|---|---|
 | 文件协议、锁、超时、结果完整性 | 已实现并有离线测试 | 不等于真实客户端稳定性验收 |
-| 日线 / 1分钟 / 5分钟 / Tick | 优先 `C.get_market_data_ex_ori`，外部构造 DataFrame | 新原始行情路径需要真实券商数据对照；缓存必须预先准备 |
+| cache_only 日线 / 1分钟 / 5分钟 / Tick | 优先 `C.get_market_data_ex_ori`，外部构造 DataFrame | 新原始行情路径需要真实券商数据对照；缓存必须预先准备 |
+| auto 日线 / 1分钟 / 5分钟 | 独立 worker 对股票、ETF、指数逐单元下载并严格读回校验 | 仅已结束交易日；必须显式 opt-in；正式 worker 的真实终端验收仍待完成 |
 | 复权因子 | 支持事件日期、七字段规范化 | 历史样本有返回记录，仍需跨端逐值对照 |
 | 简版合约 | 可调用并保留返回字段 | 部分客户端公开封装只有约 30 个键，不能冒充完整合约 |
 | 板块树 / 成员 | 通过全局板块树接口及 ContextInfo 取成员 | 大 QMT 显示名称不等于原生分类 ID，不能按名字猜主键映射 |
 | 指数权重 | 先按人工确认的成分板块取全体成员，再逐批查询 | 需验证成员集合和权重单位；合计近 100 只是粗检查 |
 | 财务八表 | 已有字段契约和验证逻辑 | 部分内置封装仍要求 pandas；不保证可运行或完整 |
-| `download_*` 兼容入口 | 仅检查用户的缓存准备确认 | **不会下载**；没有每日缓存自动供应机制 |
+| `download_*` 接口 | cache_only 仅检查人工缓存确认；auto 的 `download_history_data2` 执行持久任务 | auto 不含 Tick、财务、权重下载；不是交易日历或生产调度器 |
 | 原生 xtquant 基线 | CLI 可选，使用本地缓存接口 | 必须有仍可连接的授权原生环境；导入成功不代表连通 |
 | 交易、实时订阅、任意代码执行 | 不提供 | 没有 `XtQuantTrader`、下单、撤单或任意 RPC |
 
@@ -48,11 +50,11 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 ## 工作原理
 
 ```text
-外部 Python 3.10+                         大 QMT 内置 Python
-bigqmt_bridge                            qmt_bridge.strategy
+外部 Python 3.10+                         大 QMT 内置 Python 3.6
+bigqmt_bridge                            qmt_bridge.strategy / strategy_auto
    │  写请求 JSON                             │
    ├──────── 本机独立 IPC 目录 ────────────────┤
-   │                                  定时回调每 2 秒处理一个请求
+   │                                  定时回调依入口每 1/2 秒处理一个请求
    │                                  调用白名单 ContextInfo 接口
    │  读结果 manifest + gzip JSON             │
    └─ 校验 UUID / 协议 / 长度 / SHA256 ───────┘
@@ -61,9 +63,11 @@ bigqmt_bridge                            qmt_bridge.strategy
 
 内置端自身只导入 Python 标准库；但它调用的券商封装可能自行导入 pandas。优先使用原始行情方法只解决相应行情封装的依赖问题，不会自动解决财务封装的 pandas 依赖。
 
-请求只允许 `probe`、`market_data`、`divid_factors`、`financial`、`instrument`、`sectors`、`sector_stocks`、`weights`。普通客户端不需要手工操作协议文件。
+cache_only 请求只允许 `probe`、`market_data`、`divid_factors`、`financial`、`instrument`、`sectors`、`sector_stocks`、`weights`。auto 入口另允许受限的 `download_kline`，每个命令只能处理一只证券、一天和一种 `1d`/`1m`/`5m` 周期。普通客户端不需要手工操作协议文件。
 
-## 快速开始
+## 快速开始（cache_only）
+
+本节是兼容的旧只读模式：使用 `qmt_bridge/strategy.py`、`config.example.json` 和人工准备缓存。它不会自动下载历史数据。需要自动 K 线时不要修改这套入口，请跳到下一节。
 
 以下命令为 Windows PowerShell。`python` 应指向你选择的 **外部 Python 3.10+**，不是内置 Python。
 
@@ -139,6 +143,17 @@ Copy-Item -LiteralPath config.example.json -Destination config.local.json
 ```
 
 样本文件包含采样范围、字段、逐行数据、错误和每类耗时。它不连接数据库、不下单，也不会调用历史下载接口。
+
+## 自动 K 线下载（opt-in）
+
+自动模式使用独立入口 `qmt_bridge/strategy_auto.py`、样例 `config.auto.example.json` 和独立运行目录 `D:\bigqmt-auto-runtime`。必须人工将独立策略内的 `ENABLE_DOWNLOADS` 从默认 false 改为 true，并保持“启动本地python”未勾选。单日 CLI 示例：
+
+```powershell
+python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.SZ --period 1d --start 20260908 --end 20260908 --output evidence/auto-daily.json
+python -m bigqmt_bridge download-status --config config.auto.local.json --job-id <returned-id> --output evidence/auto-status.json
+```
+
+完整的加载、同 ID 续查、unknown 不重发、多日交易日历和 Python 调用说明见[自动 K 线下载指南](docs/automatic-download.md)。正式新 worker 尚未在真实终端加载验收，不可据离线测试或旧实验入口直接接管生产。
 
 ## Python 调用
 
@@ -229,7 +244,10 @@ python -m bigqmt_bridge sample --backend native --date 20260904 --codes 000001.S
 | `bridge_dir` | 无，文件桥必填 | 独立 IPC 目录；相对路径相对于配置文件目录解析 |
 | `cache_prepared` | 未确认，取行情/复权/财务失败 | 只能是 JSON true/false；不是自动下载或新鲜度检测 |
 | `timeout` | probe 5 秒、sample 60 秒 | 每次请求等待上限，不能硬中断内置调用 |
-| `poll_interval` | 0.1 秒 | 外部检查响应间隔，不改变服务端 2 秒调度周期 |
+| `poll_interval` | 0.1 秒 | 外部检查响应间隔，不改变 cache_only/auto 服务端各自 2/1 秒调度周期 |
+| `history_mode` | `cache_only` | `auto` 才创建自动 K 线后端；自动 CLI 在命令作用域显式设为 auto |
+| `download_timeout` | 120 秒 | auto 模式每个证券×日期单元的有限等待预算 |
+| `job_dir` | `<bridge_dir>/client_jobs` | auto 模式持久任务报告目录；相对路径按配置文件定位 |
 | `batch_size` | 10 | 整数 1～10；Tick 固定 1 |
 | `sector_root` | 空字符串 | 部分客户端需要真实根节点名称 |
 | `instrument_fields` | 空列表 | 完整合约的必需键全集，必须来自可靠原生基线 |
@@ -254,7 +272,7 @@ get_financial_data(stock_list, table_list=None, ...)
 download_history_data2(...), download_financial_data2(...), download_index_weight()
 ```
 
-最后三个方法只是**兼容确认入口**，不执行下载。此版本不提供 `get_full_tick`、实时订阅回调、交易接口，也不支持把任意 xtquant 调用原样透传。外部 `get_local_data(data_dir=...)` 不能选择内置端缓存路径，会明确报错。
+在默认 cache_only 模式中，最后三个方法只是兼容确认入口，不执行下载；在 auto 模式中只有 `download_history_data2` 会执行受限 K 线下载，并另提供本地只读的 `download_status(job_id)`。财务与指数权重自动下载明确拒绝。此版本不提供 `get_full_tick`、实时订阅回调、交易接口，也不支持把任意 xtquant 调用原样透传。外部 `get_local_data(data_dir=...)` 不能选择内置端缓存路径，会明确报错。
 
 ## 故障排查
 
@@ -281,7 +299,7 @@ download_history_data2(...), download_financial_data2(...), download_index_weigh
 - **信任边界是本机目录权限。** SHA256 用于损坏检测，不是签名或身份认证。目录可写者能伪造数据；不要把 IPC 目录开放给不可信用户或放到公开共享、Git仓库同步和云盘同步目录中。
 - 请求 UUID 和 deadline、协议版本、长度等被检查；结果数据先发布、manifest 后发布。坏请求隔离，进程锁避免多个 worker 同时消费；崩溃后的只读请求可能重放，因此不要扩展为交易通道而沿用此语义。
 - 请求 JSON 上限 1 MiB，单响应未压缩 JSON 上限 64 MiB；这些不是完整内存占用上限，大返回值在序列化前仍可能占据较多内存。
-- 服务端每 2 秒处理一个工单。5000 股 Tick 仅调度下限约 2.8 小时，还没计读缓存和序列化。先测 10 / 100 / 全市场耗时，不要直接调大生产超时掩盖瓶颈。
+- cache_only 入口每 2 秒处理一个工单；其中 5000 股 Tick 仅调度下限约 2.8 小时，还没计读缓存和序列化。auto 入口每秒处理一个工单，但每个证券×日期单元仍串行下载和验证。两种模式都应先测小批量容量，不要直接调大生产超时掩盖瓶颈。
 - 外部超时只结束外部等待，不能硬中断 QMT 内置 API。不要持续堆积新请求；恢复可能需要用户停止策略或重启客户端。
 - 工单、结果及异常证据暂不自动清理。监控磁盘，制定保留期；仅在确认消费者和 worker 停止后清理已消费且不再需要的明确文件，勿递归清空运行目录。
 - 真实结果可能含受许可限制的数据和运行路径，`evidence/` 默认忽略，不上传公开仓库或公开 issue。
@@ -289,6 +307,8 @@ download_history_data2(...), download_financial_data2(...), download_index_weigh
 生产切换应是独立工作：逐通道只读对照、至少连续多个交易日验收、缓存自动供应与容量测试通过后，再安排停旧调度/启新调度。不要同时运行两个写入相同目标的采集器，不要在活跃采集目录热替换代码。保留回退条件，但原生权限已取消时不能承诺能回退。
 
 ## 智能体 Skill
+
+> **警告：本版本附带的 Skill 仍只描述 legacy/cache_only 的 probe、sample 和 compare，不覆盖 auto 工作流。自动下载必须以本 README 和 [`docs/automatic-download.md`](docs/automatic-download.md) 为准；本阶段没有修改 Skill。**
 
 附带 [`skills/bigqmt-data-bridge/SKILL.md`](skills/bigqmt-data-bridge/SKILL.md)。这是本项目专用的参考技能，不是一般交易技能；包含实际命令、路径规则、采样契约和故障判定。
 
@@ -322,7 +342,8 @@ qmt_bridge/            内置端策略、worker、文件协议（标准库）
 tests/                 离线回归测试
 skills/                可复制给智能体的技能
 docs/                  拆分设计、实施记录、验证与发布清单
-config.example.json    不含凭据，缓存确认缺省为 false
+config.example.json    legacy/cache_only 样例，缓存确认缺省为 false
+config.auto.example.json  auto 独立运行目录样例，下载能力仍需服务端 opt-in
 pyproject.toml         外部客户端安装元数据
 LICENSE                MIT
 ```
@@ -339,7 +360,7 @@ wheel 用于外部客户端安装，包含所需字段资源及内置端 Python 
 
 先按 [`docs/release-checklist.md`](docs/release-checklist.md) 审查本地文件。新建独立仓库，不继承私人原项目历史。提交前查看 `git status` 和暂存差异，确保没有样本、日志或本地配置。
 
-在 GitHub 手动创建你选择的仓库后，使用其实际地址设置 remote 并 push。本文不预填账号或仓库 URL，也没有替你执行发布。初版建议标为 `0.1.0a1 / Alpha`，在仓库说明中保留限制和验收状态。
+在 GitHub 手动创建你选择的仓库后，使用其实际地址设置 remote 并 push。本文不预填账号或仓库 URL，也没有替你执行发布。当前版本为 `0.2.0a1 / Alpha`，在仓库说明中保留限制和验收状态；本任务不发布 wheel、GitHub Release 或 PyPI 包。
 
 ### 来源和许可证
 

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bigqmt-data-bridge"
-version = "0.1.0a1"
-description = "Experimental read-only file bridge for QMT embedded Python"
+version = "0.2.0a1"
+description = "Experimental embedded QMT file bridge with verified K-line downloads"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}

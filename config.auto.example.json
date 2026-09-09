@@ -1,0 +1,9 @@
+{
+  "backend": "file_bridge",
+  "history_mode": "auto",
+  "bridge_dir": "D:\\bigqmt-auto-runtime",
+  "timeout": 10,
+  "poll_interval": 0.1,
+  "download_timeout": 120,
+  "cache_prepared": false
+}
