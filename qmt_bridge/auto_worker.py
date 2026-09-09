@@ -19,7 +19,7 @@ class AutomaticWorker(object):
         self.downloads_enabled = downloads_enabled is True
         self._lock = None
         for name in ('requests', 'running', 'responses', 'records', 'states',
-                     'client_jobs'):
+                     'client_jobs', 'response_repairs'):
             os.makedirs(os.path.join(self.root, name), exist_ok=True)
         self._lock = FileLock(os.path.join(self.root, 'worker.lock'))
         try:
@@ -69,6 +69,9 @@ class AutomaticWorker(object):
                     'error': None if error is None else str(error)[:2000]}
         if late is not None:
             envelope['late'] = bool(late)
+        repair_path = self._path('response_repairs', request_id)
+        atomic_json(repair_path, {'protocol': PROTOCOL,
+                                  'request_id': request_id})
         atomic_json(self._path('states', request_id), envelope)
         try:
             publish_result(os.path.join(self.root, 'responses'), request_id,
@@ -77,28 +80,47 @@ class AutomaticWorker(object):
             # The state journal is authoritative. A later poll repairs the
             # response without changing or replaying the completed operation.
             pass
+        else:
+            if os.path.exists(repair_path):
+                os.unlink(repair_path)
         return envelope
 
     def _repair_response(self):
-        states = os.path.join(self.root, 'states')
-        for name in sorted(name for name in os.listdir(states)
-                           if name.endswith('.json')):
-            request_id = name[:-5]
-            response_path = self._path('responses', request_id)
-            if os.path.exists(response_path):
-                continue
-            try:
-                check_id(request_id)
-                envelope = self._validate_envelope(
-                    request_id, load_json(os.path.join(states, name), MAX_BYTES))
-                publish_result(os.path.join(self.root, 'responses'), request_id,
-                               envelope, None)
-                return True
-            except Exception:
-                # Preserve corrupt state evidence. A transient response failure
-                # is retried by the next timer callback.
-                continue
-        return False
+        repairs = os.path.join(self.root, 'response_repairs')
+        entries = os.scandir(repairs)
+        candidate = None
+        try:
+            for entry in entries:
+                if entry.name.endswith('.json'):
+                    candidate = entry.path
+                    break
+        finally:
+            entries.close()
+        if candidate is None:
+            return False
+        request_id = os.path.basename(candidate)[:-5]
+        try:
+            check_id(request_id)
+            marker = load_json(candidate, MAX_REQUEST_BYTES)
+            if (not isinstance(marker, dict) or
+                    marker.get('protocol') != PROTOCOL or
+                    marker.get('request_id') != request_id):
+                raise ValueError('response repair marker identity mismatch')
+            envelope = self._validate_envelope(
+                request_id,
+                load_json(self._path('states', request_id), MAX_BYTES))
+        except Exception:
+            self._quarantine(candidate)
+            return True
+        try:
+            publish_result(os.path.join(self.root, 'responses'), request_id,
+                           envelope, None)
+        except Exception:
+            # Keep the marker for a later bounded retry.
+            return True
+        if os.path.exists(candidate):
+            os.unlink(candidate)
+        return True
 
     def _recover_running(self):
         directory = os.path.join(self.root, 'running')
@@ -119,8 +141,17 @@ class AutomaticWorker(object):
                     envelope = self._validate_envelope(
                         request_id, load_json(state_path, MAX_BYTES))
                     if not os.path.exists(response_path):
-                        publish_result(os.path.join(self.root, 'responses'),
-                                       request_id, envelope, None)
+                        repair_path = self._path('response_repairs', request_id)
+                        atomic_json(repair_path, {'protocol': PROTOCOL,
+                                                  'request_id': request_id})
+                        try:
+                            publish_result(os.path.join(self.root, 'responses'),
+                                           request_id, envelope, None)
+                        except Exception:
+                            pass
+                        else:
+                            if os.path.exists(repair_path):
+                                os.unlink(repair_path)
                 elif os.path.exists(response_path):
                     envelope = self._validate_envelope(
                         request_id,
@@ -171,13 +202,11 @@ class AutomaticWorker(object):
     def poll(self):
         if self._lock is None:
             raise RuntimeError('worker is closed')
-        if self._repair_response():
-            return True
         requests = os.path.join(self.root, 'requests')
         names = sorted(name for name in os.listdir(requests)
                        if name.endswith('.json'))
         if not names:
-            return False
+            return self._repair_response()
         name = names[0]
         request_id = name[:-5]
         source = os.path.join(requests, name)
@@ -196,8 +225,17 @@ class AutomaticWorker(object):
                     envelope = self._validate_envelope(
                         request_id, load_json(state_path, MAX_BYTES))
                     if not os.path.exists(response_path):
-                        publish_result(os.path.join(self.root, 'responses'), request_id,
-                                       envelope, None)
+                        repair_path = self._path('response_repairs', request_id)
+                        atomic_json(repair_path, {'protocol': PROTOCOL,
+                                                  'request_id': request_id})
+                        try:
+                            publish_result(os.path.join(self.root, 'responses'),
+                                           request_id, envelope, None)
+                        except Exception:
+                            pass
+                        else:
+                            if os.path.exists(repair_path):
+                                os.unlink(repair_path)
                 except Exception:
                     # Preserve corrupt state as evidence and never dispatch again.
                     pass

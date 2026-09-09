@@ -424,12 +424,46 @@ def test_success_state_survives_response_publish_failure_and_is_repaired(
         assert worker.poll() is True
         state = json.loads((tmp_path / 'states' / (rid + '.json')).read_text())
         assert state['state'] == 'returned'
+    finally:
+        worker.close()
+    worker = AutomaticWorker(str(tmp_path), object(),
+                             {'download_history_data': download},
+                             downloads_enabled=True)
+    try:
         assert worker.poll() is True
         result = transport.lookup(rid)
         assert result['state'] == 'returned'
         assert result['data']['return_value'] is None
         assert len(api_calls) == 1
         assert len(publish_attempts) == 2
+    finally:
+        worker.close()
+
+
+def test_queued_dispatch_does_not_enumerate_terminal_history(tmp_path, monkeypatch):
+    import qmt_bridge.auto_worker as auto_worker
+    from qmt_bridge.auto_worker import AutomaticWorker
+    from bigqmt_bridge.auto_transport import AutomaticTransport
+
+    worker = AutomaticWorker(str(tmp_path), object(), {})
+    transport = AutomaticTransport({'bridge_dir': str(tmp_path), 'timeout': 1})
+    try:
+        for number in range(4):
+            rid = transport.submit('probe', {'number': number}, '%032x' % number)
+            assert worker.poll() is True
+            assert transport.lookup(rid)['state'] == 'returned'
+        pending = transport.submit('probe', {'number': 4}, '%032x' % 4)
+        real_listdir = auto_worker.os.listdir
+        states = str((tmp_path / 'states').resolve())
+
+        def bounded_listdir(path):
+            if str(Path(path).resolve()) == states:
+                raise AssertionError('poll must not enumerate terminal history')
+            return real_listdir(path)
+
+        monkeypatch.setattr(auto_worker.os, 'listdir', bounded_listdir)
+        assert worker.poll() is True
+        assert transport.lookup(pending)['state'] == 'returned'
     finally:
         worker.close()
 
