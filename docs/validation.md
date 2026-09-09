@@ -2,7 +2,9 @@
 
 当前版本：`0.2.0a1`，实验性内置 QMT 文件桥；默认 `cache_only`，可显式 opt-in 到受限的已结束交易日 K 线自动下载。此记录是离线验证和历史实测记录，不是券商兼容性、业务完整性或生产迁移验收。
 
-## 0.2.0a1 自动下载 CLI 与打包验证
+## 0.2.0a1 自动下载 CLI 与历史打包验证
+
+维护约定更新：后续只更新 GitHub 源码，不再构建安装包。下方 wheel 的大小、哈希与隔离检查仅对应提交 `4cf5f77` 当时的产物，不用于证明后续源码已打包。
 
 - CLI 合同测试先记录预期 RED：`python -m pytest tests/test_auto_cli.py -q` 为 **5 failed / 1 passed**，失败来自 `download` / `download-status` 尚未注册及本地状态管理器入口不存在；实现后同命令为 **6 passed**。
 - 完整离线回归：`python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q` 为 **236 passed in 50.57s**。测试使用临时目录、合成 ContextInfo 和受控文件协议，没有连接真实终端或下载真实行情。

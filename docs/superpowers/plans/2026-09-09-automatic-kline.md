@@ -10,12 +10,16 @@
 
 **Spec:** [../specs/2026-09-09-automatic-kline-design.md](../specs/2026-09-09-automatic-kline-design.md)
 
+## 执行状态与后续约定
+
+Task 1、2、3 的实现及任务级审查已完成；最终整分支审查正在进行。最近离线回归 236 项通过，正式新入口的模拟 QMT 验收仍 pending，不能以 qualification 实验替代。下方已执行的构建步骤仅保留历史记录；按用户后续要求，不再构建安装包，源码审查验证完成后推送当前功能分支，不自动合并主分支。
+
 ## Global Constraints
 
 - 外部 Python 3.10+；内置 Python 3.6 标准库，无网络、线程、xtquant、pandas 导入。
 - 本轮仅股票/ETF/指数的 1d、1m、5m 已结束交易日 K 线自动下载；无交易、订阅、Tick 字段补齐、财务自动下载或生产切换。
 - 保留原 `qmt_bridge/strategy.py`、旧 worker/协议及默认只读模式；新入口 `qmt_bridge/strategy_auto.py`，运行目录 `D:\bigqmt-auto-runtime`。不修改运行中的 qualification_v1。
-- 工作在用户指定独立项目的新分支；保留既有未提交修改，不公开证据/账户/配置，不推送。
+- 工作在用户指定独立项目的新分支；保留既有未提交修改，不公开证据/账户/配置。用户已追加授权审查验证后推送当前功能分支；不自动合并主分支，不再构建安装包。
 - 用 apply_patch 编辑；只提交任务自身文件，commit 说明不出现 codex/chatgpt 等字样。不操作真实终端、不下载真实行情，现场验收由主任务负责。
 
 ---
@@ -31,7 +35,7 @@
 - `AutomaticTransport(config)` uses bridge_dir/timeout/poll_interval. `.submit(operation, args, request_id=None) -> str`; `.lookup(request_id) -> dict`; `.wait(request_id, timeout=None) -> dict`; `.call(operation,args) -> data` (returned only). `QmtRequestTimeout(QmtDataError)` exposes request_id; lookup statuses pending/unknown/returned/failed/expired. Envelope also includes request_id,args_hash,data,error; native call's `late` field retained.
 - `download_kline` response data `{api, data_ready:False, return_value, elapsed_seconds}`. No global download function → failed, not native fallback.
 
-- [ ] **RED:** Add tests before source; test successful real file roundtrip, repeat same ID once, different args rejected, max 32 pending, invalid dates/code/period, disabled download, interrupted worker unknown/no replay, completed response still returned after restart, immutable record but no queued request returns unknown, late native return remains queryable, lock excludes second worker.
+- [x] **RED:** Add tests before source; test successful real file roundtrip, repeat same ID once, different args rejected, max 32 pending, invalid dates/code/period, disabled download, interrupted worker unknown/no replay, completed response still returned after restart, immutable record but no queued request returns unknown, late native return remains queryable, lock excludes second worker.
 
 ```python
 def test_disabled_download_never_reaches_api(tmp_path):
@@ -49,11 +53,11 @@ def test_disabled_download_never_reaches_api(tmp_path):
         worker.close()
 ```
 
-- [ ] Run `python -m pytest tests/test_auto_protocol.py tests/test_auto_worker.py -q`, capture expected missing implementation failures.
-- [ ] Implement canonical immutable records before queue publication; validate paths/ID/limits; one-request native dispatch plus explicit download enable gate. On startup running files become unknown, never requeued. Reuse old dispatch for existing read-only operations and old result serialization, new envelope validates protocol and identity.
-- [ ] Implement external bounded queue publisher with OS lock, stable-ID duplicate handling and lookup/wait/call; unknown/timeouts never publish a second request. Keep server journals authoritative, fail closed on corruption.
-- [ ] Strategy uses PROJECT_ROOT plus independent root and `ENABLE_DOWNLOADS=False` opt-in. init closes prior worker then registers run_time at 1nSecond; no startup downloads, no importlib dependency; handlebar pass, stop closes lock. Document no hot-reload promise in entry comments.
-- [ ] Run focused tests, Python 3.6 AST check for new qmt files, then full tests once; self-review and commit only six task files: `feat: add durable QMT download transport and worker`.
+- [x] Run `python -m pytest tests/test_auto_protocol.py tests/test_auto_worker.py -q`, capture expected missing implementation failures.
+- [x] Implement canonical immutable records before queue publication; validate paths/ID/limits; one-request native dispatch plus explicit download enable gate. On startup running files become unknown, never requeued. Reuse old dispatch for existing read-only operations and old result serialization, new envelope validates protocol and identity.
+- [x] Implement external bounded queue publisher with OS lock, stable-ID duplicate handling and lookup/wait/call; unknown/timeouts never publish a second request. Keep server journals authoritative, fail closed on corruption.
+- [x] Strategy uses PROJECT_ROOT plus independent root and `ENABLE_DOWNLOADS=False` opt-in. init closes prior worker then registers run_time at 1nSecond; no startup downloads, no importlib dependency; handlebar pass, stop closes lock. Document no hot-reload promise in entry comments.
+- [x] Run focused tests, Python 3.6 AST check for new qmt files, then full tests once; self-review and commit only six task files: `feat: add durable QMT download transport and worker`.
 
 ### Task 2: 外部任务编排、严格校验与 facade
 
@@ -66,7 +70,7 @@ def test_disabled_download_never_reaches_api(tmp_path):
 - `AutomaticBackend(InnerBackend)` selected by `create_backend(history_mode='auto')`. It uses AutomaticTransport; download_history_data2 delegates manager and exposes download_status. Preserve cached legacy APIs by narrowly adding `_history_cache()` to parent (default calls `_cache()`), used only by market reads; auto override disables manual history-cache gate. Financial and index-weight downloads in auto mode explicitly raise; Tick read explicitly rejects. Enforce raw UTC K-line payloads in auto market-read path without duplicating parent normalization body.
 - Config new keys: history_mode (`cache_only` default / `auto`), download_timeout (finite positive, default 120), job_dir (path, default bridge_dir/client_jobs). Existing options/behavior unchanged. Relative job_dir resolves relative to explicit config file like bridge_dir.
 
-- [ ] **RED:** Add end-to-end tests using Task 1's real file transport and fake ContextInfo cache. Assert cold cache completes, warm cache avoids download, status survives new manager, same parameters produce same job ID, wrong explicit ID parameters reject, unknown state reads/reconciles but never redownloads, incomplete data doesn't succeed, failed cells recorded, unknown cell stops new submissions, partial count correct. Cover 2 codes × 2 provided dates, cap validation before any publish.
+- [x] **RED:** Add end-to-end tests using Task 1's real file transport and fake ContextInfo cache. Assert cold cache completes, warm cache avoids download, status survives new manager, same parameters produce same job ID, wrong explicit ID parameters reject, unknown state reads/reconciles but never redownloads, incomplete data doesn't succeed, failed cells recorded, unknown cell stops new submissions, partial count correct. Cover 2 codes × 2 provided dates, cap validation before any publish.
 
 ```python
 def test_old_worker_is_rejected_before_download(tmp_path):
@@ -81,11 +85,11 @@ def test_old_worker_is_rejected_before_download(tmp_path):
         DownloadManager(Old(), {'bridge_dir':str(tmp_path)}).download(['000001.SZ'], '1d', '20260908', '20260908')
 ```
 
-- [ ] Run `python -m pytest tests/test_download_jobs.py tests/test_auto_backend.py -q`, record failures.
-- [ ] Implement source-time validator: DataFrame construction never repairs missing original numeric time. For date grid use UTC conversion to Asia/Shanghai. Reject duplicates, missing rows, non-finite/negative amount-volume, impossible OHLC. Don't compare minute sums to daily exactly.
-- [ ] Implement manager according to spec, normalize/validate scope first, probe new version before download, read cache first, one stable native request if required, repeat only read queries within bounded deadline, atomically save every state transition. Catch transport failure with request identity and keep uncertain outcome; no transparent native retry. Resume reuses stored scope/IDs, revalidates verified cache, only reconciles attempted items.
-- [ ] Add narrow facade/config integration and tests proving default cache_only behavior unchanged; auto works with cache_prepared=false and rejects unsupported kwargs/old worker explicitly.
-- [ ] Run focused tests plus full suite, self-review and commit only this task's files: `feat: add verified automatic K-line download jobs`.
+- [x] Run `python -m pytest tests/test_download_jobs.py tests/test_auto_backend.py -q`, record failures.
+- [x] Implement source-time validator: DataFrame construction never repairs missing original numeric time. For date grid use UTC conversion to Asia/Shanghai. Reject duplicates, missing rows, non-finite/negative amount-volume, impossible OHLC. Don't compare minute sums to daily exactly.
+- [x] Implement manager according to spec, normalize/validate scope first, probe new version before download, read cache first, one stable native request if required, repeat only read queries within bounded deadline, atomically save every state transition. Catch transport failure with request identity and keep uncertain outcome; no transparent native retry. Resume reuses stored scope/IDs, revalidates verified cache, only reconciles attempted items.
+- [x] Add narrow facade/config integration and tests proving default cache_only behavior unchanged; auto works with cache_prepared=false and rejects unsupported kwargs/old worker explicitly.
+- [x] Run focused tests plus full suite, self-review and commit only this task's files: `feat: add verified automatic K-line download jobs`.
 
 ### Task 3: CLI、部署文档与打包验证
 
@@ -93,17 +97,17 @@ def test_old_worker_is_rejected_before_download(tmp_path):
 
 **Interfaces:** Keep existing probe/sample/compare untouched in default behavior. Add `download` with --config, --bridge-dir, --codes, --period (1d/1m/5m), --start, --end, --expected-dates CSV, --job-id, --output(required); force explicit history_mode=auto (config or CLI command scope), refuse native. Add `download-status` with --config, --bridge-dir, --job-id, --output(required), no QMT requests. CLI returns 0 only for state=verified with empty job-level errors, else 1 with persisted report/error and IDs, including post-save preflight failures. No raw market data in reports.
 
-- [ ] **RED:** CLI tests call main against tmp_path, fake only slow external manager boundary when needed; assert output artifact, exit codes, ID-preserving errors, local-only status, and legacy CLI behavior.
-- [ ] Run `python -m pytest tests/test_auto_cli.py -q`, record intended failures.
-- [ ] Add handlers before legacy parser paths; emit QmtDownloadError.report rather than losing it in generic exception. Resolve explicit config consistently.
+- [x] **RED:** CLI tests call main against tmp_path, fake only slow external manager boundary when needed; assert output artifact, exit codes, ID-preserving errors, local-only status, and legacy CLI behavior.
+- [x] Run `python -m pytest tests/test_auto_cli.py -q`, record intended failures.
+- [x] Add handlers before legacy parser paths; emit QmtDownloadError.report rather than losing it in generic exception. Resolve explicit config consistently.
 
 ```powershell
 python -m bigqmt_bridge download --config config.auto.example.json --codes 000001.SZ --period 1d --start 20260908 --end 20260908 --output evidence/auto-daily.json
 python -m bigqmt_bridge download-status --config config.auto.example.json --job-id <returned-id> --output evidence/auto-status.json
 ```
 
-- [ ] Write sample JSON with backend=file_bridge, history_mode=auto, bridge_dir=D:\\bigqmt-auto-runtime, timeout=10, poll_interval=0.1, download_timeout=120, cache_prepared=false. Document ENABLE_DOWNLOADS opt-in, unchecked local-Python box, separate entry, exact CLI/Python commands, multi-day calendar requirement, same-ID resume, unknown-state no resend, seconds-level polling, no production readiness promise. Keep old quickstart clearly labelled cache_only. Skill remains legacy-only this release; add prominent README warning that skill does not yet cover auto workflow instead of silently teaching old download semantics.
-- [ ] Change package version to 0.2.0a1 and description to experimental embedded QMT file bridge with verified K-line downloads; do not publish. New modules included by existing package rules, no experiment/evidence in wheel.
-- [ ] Add records/, states/, client_jobs/, response_repairs/ to .gitignore for accidental project-root runtime placement. Document response_repairs as internal bounded-repair markers, not a second request queue. Update release-checklist to distinguish cache_only and auto, preserve Alpha/no trading/not production-accepted, and check new runtime artifacts never enter Git/wheel.
-- [ ] Full tests, build wheel with `python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist`, CLI help and isolated wheel import/CLI help check, inspect archive names for evidence/config.local/credentials. Record evidence honestly; formal live test pending until new entry actually loaded.
-- [ ] Self-review and commit only task-owned changes: `feat: expose automatic download CLI and deployment guide`. Controller handles final broad review and live handoff.
+- [x] Write sample JSON with backend=file_bridge, history_mode=auto, bridge_dir=D:\\bigqmt-auto-runtime, timeout=10, poll_interval=0.1, download_timeout=120, cache_prepared=false. Document ENABLE_DOWNLOADS opt-in, unchecked local-Python box, separate entry, exact CLI/Python commands, multi-day calendar requirement, same-ID resume, unknown-state no resend, seconds-level polling, no production readiness promise. Keep old quickstart clearly labelled cache_only. Skill remains legacy-only this release; add prominent README warning that skill does not yet cover auto workflow instead of silently teaching old download semantics.
+- [x] Change package version to 0.2.0a1 and description to experimental embedded QMT file bridge with verified K-line downloads; do not publish. New modules included by existing package rules, no experiment/evidence in wheel.
+- [x] Add records/, states/, client_jobs/, response_repairs/ to .gitignore for accidental project-root runtime placement. Document response_repairs as internal bounded-repair markers, not a second request queue. Update release-checklist to distinguish cache_only and auto, preserve Alpha/no trading/not production-accepted, and check new runtime artifacts never enter Git/wheel.
+- [x] Full tests, build wheel with `python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist`, CLI help and isolated wheel import/CLI help check, inspect archive names for evidence/config.local/credentials. Record evidence honestly; formal live test pending until new entry actually loaded.
+- [x] Self-review and commit only task-owned changes: `feat: expose automatic download CLI and deployment guide`. Controller handles final broad review and live handoff.

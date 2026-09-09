@@ -350,19 +350,15 @@ pyproject.toml         外部客户端安装元数据
 LICENSE                MIT
 ```
 
-### 构建 wheel
+### 源码交付
 
-```powershell
-.\.venv\Scripts\python.exe -m pip wheel . --no-deps --wheel-dir dist
-```
-
-wheel 用于外部客户端安装，包含所需字段资源及内置端 Python 包。面向用户的完整源码发行还应包含 README、tests、docs 和 skills；发布 GitHub 源码或 Release 源码包即可。不要把整个运行目录压缩上传。
+后续维护以 GitHub 源码为交付物，不再构建或发布安装包。保留 README、tests、docs、skills 和字段资源，按上方命令验证源码；已有构建记录仅属于历史验证，不代表后续源码已经打包。不要把运行目录、真实样本、`dist/` 或 `build/` 上传。
 
 ### 准备 GitHub 发布
 
 先按 [`docs/release-checklist.md`](docs/release-checklist.md) 审查本地文件。新建独立仓库，不继承私人原项目历史。提交前查看 `git status` 和暂存差异，确保没有样本、日志或本地配置。
 
-在 GitHub 手动创建你选择的仓库后，使用其实际地址设置 remote 并 push。本文不预填账号或仓库 URL，也没有替你执行发布。当前版本为 `0.2.0a1 / Alpha`，在仓库说明中保留限制和验收状态；本任务不发布 wheel、GitHub Release 或 PyPI 包。
+已有仓库使用核对过的 remote 地址推送经过审查的功能分支；合并主分支应单独决定。当前版本为 `0.2.0a1 / Alpha`，在仓库说明中保留限制和验收状态；不构建或发布安装包，不创建 GitHub Release 或 PyPI 发布。
 
 ### 来源和许可证
 
