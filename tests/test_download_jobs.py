@@ -181,6 +181,64 @@ def test_failed_probe_preserves_existing_verified_evidence(rig, monkeypatch):
     assert manager(rig).status(report['job_id']) == report
 
 
+@pytest.mark.parametrize('prior_probe_error', [False, True])
+@pytest.mark.parametrize('interrupt_after', [1, 2])
+def test_refresh_marker_survives_interrupted_verified_reread(
+        rig, monkeypatch, tmp_path, prior_probe_error, interrupt_after):
+    from bigqmt_bridge import cli
+    from bigqmt_bridge.downloads import QmtDownloadError
+
+    task = manager(rig)
+    scope = (['000001.SZ', '000002.SZ'], '1d', '20260105', '20260105')
+    original = task.download(*scope)
+    job_id = original['job_id']
+    original_call = rig[2].call
+
+    if prior_probe_error:
+        def fail_probe(operation, args):
+            assert operation == 'probe' and args == {}
+            raise QmtDataError('probe unavailable')
+
+        monkeypatch.setattr(rig[2], 'call', fail_probe)
+        with pytest.raises(QmtDownloadError):
+            task.download(*scope)
+        monkeypatch.setattr(rig[2], 'call', original_call)
+
+    class InterruptedRefresh(BaseException):
+        pass
+
+    original_read = task._read
+    observed = []
+
+    def interrupting_read(report, item, deadline):
+        observed.append(task.status(job_id))
+        if len(observed) == interrupt_after:
+            raise InterruptedRefresh()
+        return original_read(report, item, deadline)
+
+    monkeypatch.setattr(task, '_read', interrupting_read)
+    with pytest.raises(InterruptedRefresh):
+        task.download(*scope)
+
+    persisted = task.status(job_id)
+    assert persisted['state'] == 'verified'
+    assert persisted['errors'] == ['download refresh in progress']
+    assert all(snapshot['errors'] == ['download refresh in progress']
+               for snapshot in observed)
+
+    interrupted_output = tmp_path / 'interrupted-status.json'
+    assert cli.main(['download-status', '--bridge-dir', rig[1]['bridge_dir'],
+                     '--job-id', job_id, '--output', str(interrupted_output)]) == 1
+    assert json.loads(interrupted_output.read_text())['errors'] == [
+        'download refresh in progress']
+
+    refreshed = manager(rig).download(*scope)
+    assert refreshed['state'] == 'verified' and refreshed['errors'] == []
+    complete_output = tmp_path / 'complete-status.json'
+    assert cli.main(['download-status', '--bridge-dir', rig[1]['bridge_dir'],
+                     '--job-id', job_id, '--output', str(complete_output)]) == 0
+
+
 def test_failed_and_incomplete_cells_produce_partial_counts(rig):
     from bigqmt_bridge.downloads import QmtDownloadError
     rig[0].fail_codes.add('000002.SZ')

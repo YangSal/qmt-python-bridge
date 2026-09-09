@@ -4,7 +4,7 @@
 - [ ] auto 只开放股票/ETF/指数的已结束交易日 `1d`、`1m`、`5m`；没有把 Tick、财务、指数权重、订阅或交易写成已支持。
 - [ ] `qmt_bridge/strategy.py` 与 cache_only 默认行为保留；auto 使用独立 `qmt_bridge/strategy_auto.py`、独立 `D:\bigqmt-auto-runtime`，且 `ENABLE_DOWNLOADS` 默认 false。
 - [ ] 全部离线测试通过；源码解压后可安装；wheel 在源码目录以外可导入并加载财务 JSON。
-- [ ] CLI `download` / `download-status` 仅在聚合状态 `verified` 且 job-level `errors` 为空时返回 0；探测失败保留报告和自动生成的 job/cell ID，不伪造 item 状态；status 仅读 `client_jobs/`，不发 QMT 请求。
+- [ ] CLI `download` / `download-status` 仅在聚合状态 `verified` 且 job-level `errors` 为空时返回 0；探测失败保留报告和自动生成的 job/cell ID，不伪造 item 状态；新一轮 refresh marker 从 probe 前持续到全部逐项复核结束；status 仅读 `client_jobs/`，不发 QMT 请求。
 - [ ] 多日示例必须显式提供真实交易日 `--expected-dates`；unknown 处置必须保持同范围/同 ID，不能教用户换 ID 重发。
 - [ ] 只发布本独立目录，不复制原采集仓库 `.git`、配置、SQL、输出、日志或客户端安装目录。
 - [ ] 检查未跟踪和暂存文件：不包含账号、密码、token、webhook、IP拓扑、私人路径、证书和真实样本。

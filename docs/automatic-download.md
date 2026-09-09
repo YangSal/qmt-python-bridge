@@ -48,7 +48,7 @@ python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.
 python -m bigqmt_bridge download-status --config config.auto.local.json --job-id <returned-id> --output evidence/auto-status.json
 ```
 
-`download-status` 不创建 QMT 传输、不发 probe、不推进任务。它会同时依据 `state` 和 job-level `errors` 给出退出码：例如既有 item 仍为 `verified`，但最近一次 probe 失败时，状态报告保留已验证证据并记录 `errors`，命令仍返回 1，不能称为本次 fresh verification 成功。要继续一个未完成任务，使用与首次完全相同的范围，并显式传回同一 ID：
+`download-status` 不创建 QMT 传输、不发 probe、不推进任务。它会同时依据 `state` 和 job-level `errors` 给出退出码：例如既有 item 仍为 `verified`，但最近一次 probe 失败或本轮逐项复核尚未完成时，状态报告保留已验证证据并记录 `errors`，命令仍返回 1，不能称为本次 fresh verification 成功。要继续一个未完成任务，使用与首次完全相同的范围，并显式传回同一 ID：
 
 ```powershell
 python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.SZ --period 1d --start 20260908 --end 20260908 --job-id <returned-id> --output evidence/auto-resume.json
@@ -56,7 +56,7 @@ python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.
 
 同一 `job_id` 与规范化范围永久绑定。报告为 `unknown` 表示底层调用结果不确定；实现不会因此重发该单元的下载，而是先按原请求 ID 对账和复核缓存。不要换新 ID 绕过 unknown，否则会破坏“至多一次”的人工处置边界。
 
-worker probe/协议检查失败发生在任务报告已经建立之后时，manager 会把错误写入 job-level `errors`，保留自动生成的 `job_id` 和每个 cell 的 `request_id`，并且不伪造 native attempted/failed 状态。下一次同 ID 调用只有在 probe 成功后才清除此错误，随后仍按原流程逐项复核缓存；仅 probe 通过不会让旧 `verified` 自动获得新鲜度。
+worker probe/协议检查失败发生在任务报告已经建立之后时，manager 会把错误写入 job-level `errors`，保留自动生成的 `job_id` 和每个 cell 的 `request_id`，并且不伪造 native attempted/failed 状态。下一次同 ID 调用在 probe 前先持久化 `download refresh in progress`，该 marker 贯穿 probe 和全部逐项复核；只有整轮结束后才清除。进程中断、并发 local status 或第一项刚刷新而其余项仍是旧证据时，marker 都会阻止 `verified` aggregate 被误报为本次成功。
 
 ## 4. 多日任务必须提供交易日历
 

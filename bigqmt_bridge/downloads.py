@@ -12,6 +12,7 @@ from .config import validate_config
 from .kline import FIELDS, validate_kline
 
 ITEM_STATES = ('pending', 'running', 'awaiting_data', 'verified', 'incomplete', 'failed', 'unknown')
+REFRESH_ERROR = 'download refresh in progress'
 
 
 class QmtDownloadError(QmtDataError):
@@ -324,14 +325,17 @@ class DownloadManager:
                                     for code in request['stock_list'] for date in request['expected_dates']]}
                 self._save(report)
             try:
+                # A prior all-verified aggregate is historical evidence until
+                # this whole pass has probed and re-read every cell. Persist a
+                # fail-closed marker before any potentially blocking work;
+                # every item transition carries it forward via _save().
+                report['errors'] = [REFRESH_ERROR]
+                self._save(report)
                 probe = self.transport.call('probe', {})
                 if (not isinstance(probe, dict) or probe.get('automatic_kline') != PROTOCOL or
                         type(probe.get('worker_version')) is not int or probe['worker_version'] < 3 or
                         probe.get('downloads_enabled') is not True):
                     raise QmtDataError('worker does not enable automatic K-line protocol ' + PROTOCOL)
-                if report.get('errors'):
-                    report['errors'] = []
-                    self._save(report)
             except Exception as exc:
                 raise self._job_error(report, exc) from exc
             # Reconcile attempted cells first, even if a prior crash left earlier
@@ -343,6 +347,11 @@ class DownloadManager:
                     callback(copy.deepcopy(report))
                 if item['state'] == 'unknown':
                     break
+            try:
+                report['errors'] = []
+                self._save(report)
+            except Exception as exc:
+                raise self._job_error(report, exc) from exc
             if report['state'] != 'verified':
                 raise QmtDownloadError(report)
             return copy.deepcopy(report)

@@ -155,7 +155,7 @@ python -m bigqmt_bridge download-status --config config.auto.local.json --job-id
 
 完整的加载、同 ID 续查、unknown 不重发、多日交易日历和 Python 调用说明见[自动 K 线下载指南](docs/automatic-download.md)。正式新 worker 尚未在真实终端加载验收，不可据离线测试或旧实验入口直接接管生产。
 
-任务的 item `state` 保留既有下载/校验证据；本次 probe 或协议 freshness 失败记录在 job-level `errors`，因此调用方必须同时检查 `state=verified` 和 `errors=[]`。后续 probe 成功只会清除该错误，仍会逐项读回验证，不会仅凭 probe 把旧证据当成新鲜成功。
+任务的 item `state` 保留既有下载/校验证据；本次 probe 或协议 freshness 失败记录在 job-level `errors`，因此调用方必须同时检查 `state=verified` 和 `errors=[]`。新一轮调用会在 probe 前持久化 `download refresh in progress`，并让该 marker 贯穿全部逐项读回；只有整轮结束后才清除，不会在 probe 刚成功或部分 item 刚刷新时把旧 aggregate 当成新鲜成功。
 
 ## Python 调用
 
