@@ -17,7 +17,10 @@ ITEM_STATES = ('pending', 'running', 'awaiting_data', 'verified', 'incomplete', 
 class QmtDownloadError(QmtDataError):
     def __init__(self, report):
         self.report = copy.deepcopy(report)
-        super().__init__('K-line download job %s: %s' % (report['job_id'], report['state']))
+        message = 'K-line download job %s: %s' % (report['job_id'], report['state'])
+        if report.get('errors'):
+            message += ': ' + report['errors'][0]
+        super().__init__(message)
 
 
 def _now():
@@ -164,6 +167,11 @@ class DownloadManager:
                 _validate_item_evidence(item, request['period'])
             _timestamp(report['created_at'])
             _timestamp(report['updated_at'])
+            errors = report.get('errors', [])
+            if (not isinstance(errors, list) or
+                    any(not isinstance(error, str) or not error or len(error) > 2000
+                        for error in errors)):
+                raise ValueError('job errors must be a list of nonempty bounded strings')
             state, totals = _summary(report['items'])
             if (report['state'] != state or report['totals'] != totals or
                     any(type(value) is not int for value in report['totals'].values())):
@@ -176,6 +184,16 @@ class DownloadManager:
         report['state'], report['totals'] = _summary(report['items'])
         report['updated_at'] = _now()
         atomic_json(self._path(report['job_id']), report)
+
+    def _job_error(self, report, exc):
+        report['errors'] = [('%s: %s' % (type(exc).__name__, exc))[:2000]]
+        try:
+            self._save(report)
+        except Exception as persist:
+            report['errors'].append(
+                ('report persistence failure: %s: %s' %
+                 (type(persist).__name__, persist))[:2000])
+        return QmtDownloadError(report)
 
     def _transition(self, report, item, state, error=None, validation=None):
         item.update(state=state, error=None if error is None else str(error)[:2000],
@@ -298,17 +316,24 @@ class DownloadManager:
             else:
                 now = _now()
                 report = {'job_id': job_id, 'request': request, 'created_at': now,
+                          'errors': [],
                           'items': [{'code': code, 'date': date,
                                      'request_id': _item_id(job_id, request, code, date),
                                      'state': 'pending', 'attempted': False, 'error': None,
                                      'validation': None, 'updated_at': now}
                                     for code in request['stock_list'] for date in request['expected_dates']]}
                 self._save(report)
-            probe = self.transport.call('probe', {})
-            if (not isinstance(probe, dict) or probe.get('automatic_kline') != PROTOCOL or
-                    type(probe.get('worker_version')) is not int or probe['worker_version'] < 3 or
-                    probe.get('downloads_enabled') is not True):
-                raise QmtDataError('worker does not enable automatic K-line protocol ' + PROTOCOL)
+            try:
+                probe = self.transport.call('probe', {})
+                if (not isinstance(probe, dict) or probe.get('automatic_kline') != PROTOCOL or
+                        type(probe.get('worker_version')) is not int or probe['worker_version'] < 3 or
+                        probe.get('downloads_enabled') is not True):
+                    raise QmtDataError('worker does not enable automatic K-line protocol ' + PROTOCOL)
+                if report.get('errors'):
+                    report['errors'] = []
+                    self._save(report)
+            except Exception as exc:
+                raise self._job_error(report, exc) from exc
             # Reconcile attempted cells first, even if a prior crash left earlier
             # unattempted cells. Never enlarge an unresolved native queue.
             ordered = sorted(report['items'], key=lambda item: not item['attempted'])

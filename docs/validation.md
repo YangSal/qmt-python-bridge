@@ -5,11 +5,11 @@
 ## 0.2.0a1 自动下载 CLI 与打包验证
 
 - CLI 合同测试先记录预期 RED：`python -m pytest tests/test_auto_cli.py -q` 为 **5 failed / 1 passed**，失败来自 `download` / `download-status` 尚未注册及本地状态管理器入口不存在；实现后同命令为 **6 passed**。
-- 完整离线回归：`python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q` 为 **227 passed in 39.91s**。测试使用临时目录、合成 ContextInfo 和受控文件协议，没有连接真实终端或下载真实行情。
-- wheel 构建：`python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist` 成功，最终产物 `bigqmt_data_bridge-0.2.0a1-py3-none-any.whl`，52,237 bytes，SHA256 `f654acc81874e73f995874db71416615ae0987185871f612b4d12bd95e526421`。未安装到现有 py10，未发布。
+- 完整离线回归：`python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q` 为 **232 passed in 40.67s**。测试使用临时目录、合成 ContextInfo 和受控文件协议，没有连接真实终端或下载真实行情。
+- wheel 构建：`python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist` 成功，最终产物 `bigqmt_data_bridge-0.2.0a1-py3-none-any.whl`，52,640 bytes，SHA256 `cf583665a75b6c413e41f950d5d71dda6c53463373ce47dc365a493139260146`。未安装到现有 py10，未发布。
 - 在源码目录外的独立临时目录，以 `python -I` 将 wheel 文件直接加入 `sys.path`：成功导入 `bigqmt_bridge`、`bigqmt_bridge.auto_backend`、`qmt_bridge.strategy_auto`，并读取 8 个财务 schema；根 CLI、`download --help`、`download-status --help` 均退出 0。
 - wheel 共 25 个条目，包含新 auto 客户端/worker/入口及既有 schema；归档名检查未发现 `experiments`、`evidence`、`config.local`、credentials、运行时 `records/states/client_jobs/response_repairs/requests/responses`。配置样例和文档属于源码发行，不进入 wheel。
-- 新 CLI 仅在聚合 `state=verified` 时退出 0；`QmtDownloadError.report` 原样落盘以保留 job/request ID。`download-status` 以无 transport 的本地 `DownloadManager` 读取报告，不发送 QMT 请求。报告不包含原始行情行。
+- 新 CLI 仅在聚合 `state=verified` 且 job-level `errors` 为空时退出 0；`QmtDownloadError.report` 原样落盘以保留 job/request ID。worker probe/协议失败发生在报告创建后时，manager 保存错误和自动生成的 job/cell ID，不伪造 item 调用状态；旧 report 缺 `errors` 兼容为空，损坏的 errors 类型/内容 fail closed。`download-status` 以无 transport 的本地 `DownloadManager` 读取报告，不发送 QMT 请求。报告不包含原始行情行。
 - `verified` 只说明请求日期的原始 UTC、字段/数值、OHLC 关系和交易分钟网格满足当前结构合同；没有停牌、上市日期或交易所休市状态数据源，不能据此宣称业务完整或生产可用。
 - 正式新 worker 的 live acceptance **未完成**。最近一次 GUI 只读预检在最小化窗口后重新选择与激活时返回 `window is not a usable app window`；没有粘贴、运行或加载 `strategy_auto.py`，没有产生新入口的 probe 或真实下载。此前 P0/P1 结果仅属于旧 `qualification_v1` 实验，不上调为正式验收。
 

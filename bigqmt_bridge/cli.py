@@ -269,7 +269,8 @@ def main(argv=None):
                 report['ok'] = not compare(report, report)
         if args.output:
             atomic_json(Path(args.output), report)
-        ok = report.get('state') == 'verified' if args.command in ('download', 'download-status') else report['ok']
+        ok = ((report.get('state') == 'verified' and not report.get('errors'))
+              if args.command in ('download', 'download-status') else report['ok'])
         summary = {'ok': ok, 'output': args.output, 'errors': report.get('errors', [])}
         if 'job_id' in report:
             summary.update(job_id=report['job_id'], state=report.get('state'))
@@ -280,7 +281,8 @@ def main(argv=None):
         atomic_json(Path(args.output), report)
         print(json.dumps({'ok': False, 'output': args.output,
                           'job_id': report.get('job_id'), 'state': report.get('state'),
-                          'errors': [str(exc)]}, ensure_ascii=True), file=sys.stderr)
+                          'errors': report.get('errors') or [str(exc)]},
+                         ensure_ascii=True), file=sys.stderr)
         return 1
     except Exception as exc:
         report = {'ok': False, 'errors': [type(exc).__name__ + ': ' + str(exc)]}

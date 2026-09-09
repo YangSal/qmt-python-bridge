@@ -104,12 +104,61 @@ def test_download_preserves_qmt_download_error_report_and_ids(tmp_path, monkeypa
     assert saved['items'][0]['request_id'] == 'b' * 32
 
 
-@pytest.mark.parametrize('state,expected_code', [('verified', 0), ('unknown', 1)])
-def test_download_status_is_local_only(tmp_path, monkeypatch, state, expected_code):
+def test_download_probe_failure_preserves_generated_ids_without_native_call(tmp_path, monkeypatch):
+    """A failing preflight after job creation must not fall back to an identity-free CLI error."""
+    from bigqmt_bridge import QmtDataError, cli
+    from bigqmt_bridge.downloads import DownloadManager
+
+    class FailingProbe:
+        def __init__(self):
+            self.native_calls = 0
+
+        def call(self, operation, args):
+            assert operation == 'probe' and args == {}
+            raise QmtDataError('probe unavailable')
+
+        def submit(self, *args, **kwargs):
+            self.native_calls += 1
+            raise AssertionError('probe failure must not submit a native request')
+
+    transport = FailingProbe()
+    runtime = tmp_path / 'runtime'
+    manager = DownloadManager(transport, {'bridge_dir': str(runtime)})
+
+    class Backend:
+        downloads = manager
+
+    monkeypatch.setattr(cli, 'create_backend', lambda config: Backend())
+    output = tmp_path / 'probe-error.json'
+
+    code = cli.main([
+        'download', '--bridge-dir', str(runtime), '--codes', '000001.SZ',
+        '--period', '1d', '--start', '20260908', '--end', '20260908',
+        '--output', str(output),
+    ])
+
+    saved = json.loads(output.read_text(encoding='utf-8'))
+    assert code == 1
+    assert len(saved['job_id']) == 32
+    assert len(saved['items'][0]['request_id']) == 32
+    assert saved['items'][0]['state'] == 'pending'
+    assert saved['items'][0]['attempted'] is False
+    assert saved['state'] == 'pending'
+    assert saved['errors'] == ['QmtDataError: probe unavailable']
+    assert transport.native_calls == 0
+    persisted = runtime / 'client_jobs' / (saved['job_id'] + '.json')
+    assert json.loads(persisted.read_text(encoding='utf-8')) == saved
+
+
+@pytest.mark.parametrize('state,errors,expected_code', [
+    ('verified', [], 0), ('verified', ['QmtDataError: probe unavailable'], 1),
+    ('unknown', [], 1),
+])
+def test_download_status_is_local_only(tmp_path, monkeypatch, state, errors, expected_code):
     """Status must not create a transport or send a QMT probe/request."""
     from bigqmt_bridge import cli
 
-    report = _report(state)
+    report = dict(_report(state), errors=errors)
     observed = {}
 
     class LocalManager:

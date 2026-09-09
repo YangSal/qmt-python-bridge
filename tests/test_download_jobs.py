@@ -157,6 +157,30 @@ def test_bad_or_disabled_probe_is_explicit_error_before_native(tmp_path, probe):
             ['000001.SZ'], '1d', '20260105', '20260105')
 
 
+def test_failed_probe_preserves_existing_verified_evidence(rig, monkeypatch):
+    from bigqmt_bridge.downloads import QmtDownloadError
+
+    original = manager(rig).download(['000001.SZ'], '1d', '20260105', '20260105')
+    validation = original['items'][0]['validation']
+    native_calls = len(rig[0].downloads)
+
+    def fail_probe(operation, args):
+        assert operation == 'probe' and args == {}
+        raise QmtDataError('probe unavailable')
+
+    monkeypatch.setattr(rig[2], 'call', fail_probe)
+    with pytest.raises(QmtDownloadError) as failure:
+        manager(rig).download(['000001.SZ'], '1d', '20260105', '20260105')
+
+    report = failure.value.report
+    assert report['state'] == 'verified'
+    assert report['items'][0]['state'] == 'verified'
+    assert report['items'][0]['validation'] == validation
+    assert report['errors'] == ['QmtDataError: probe unavailable']
+    assert len(rig[0].downloads) == native_calls
+    assert manager(rig).status(report['job_id']) == report
+
+
 def test_failed_and_incomplete_cells_produce_partial_counts(rig):
     from bigqmt_bridge.downloads import QmtDownloadError
     rig[0].fail_codes.add('000002.SZ')
@@ -375,7 +399,8 @@ def test_complete_original_time_shapes_are_accepted(shape):
 
 @pytest.mark.parametrize('fault', ['aggregate', 'totals', 'boolean_total', 'validation_missing',
     'rows', 'date', 'naive_time', 'different_daily_end', 'verified_error', 'pending_evidence',
-    'failed_unattempted', 'failure_without_error', 'missing_timestamp'])
+    'failed_unattempted', 'failure_without_error', 'missing_timestamp', 'errors_type',
+    'errors_empty'])
 def test_status_rejects_inconsistent_state_and_evidence(rig, fault):
     rig[0].cache['000001.SZ', '1d', '20260105'] = bars()
     report = manager(rig).download(['000001.SZ'], '1d', '20260105', '20260105')
@@ -402,6 +427,8 @@ def test_status_rejects_inconsistent_state_and_evidence(rig, fault):
         report['state'] = 'incomplete'
         report['totals'].update(verified=0, incomplete=1)
     elif fault == 'missing_timestamp': del item['updated_at']
+    elif fault == 'errors_type': report['errors'] = 'probe unavailable'
+    elif fault == 'errors_empty': report['errors'] = ['']
     path = rig[2].root / 'client_jobs' / (report['job_id'] + '.json')
     path.write_text(json.dumps(report))
     count = len(list((rig[2].root / 'records').glob('*.json')))

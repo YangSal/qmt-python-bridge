@@ -41,7 +41,7 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 | 板块树 / 成员 | 通过全局板块树接口及 ContextInfo 取成员 | 大 QMT 显示名称不等于原生分类 ID，不能按名字猜主键映射 |
 | 指数权重 | 先按人工确认的成分板块取全体成员，再逐批查询 | 需验证成员集合和权重单位；合计近 100 只是粗检查 |
 | 财务八表 | 已有字段契约和验证逻辑 | 部分内置封装仍要求 pandas；不保证可运行或完整 |
-| `download_*` 接口 | cache_only 仅检查人工缓存确认；auto 的 `download_history_data2` 执行持久任务 | auto 不含 Tick、财务、权重下载；不是交易日历或生产调度器 |
+| `download_*` 接口 | cache_only 仅检查人工缓存确认；auto 的 `download_history_data2` 执行持久任务 | auto 仅在 `state=verified` 且 job-level `errors` 为空时成功；不含 Tick、财务、权重下载 |
 | 原生 xtquant 基线 | CLI 可选，使用本地缓存接口 | 必须有仍可连接的授权原生环境；导入成功不代表连通 |
 | 交易、实时订阅、任意代码执行 | 不提供 | 没有 `XtQuantTrader`、下单、撤单或任意 RPC |
 
@@ -154,6 +154,8 @@ python -m bigqmt_bridge download-status --config config.auto.local.json --job-id
 ```
 
 完整的加载、同 ID 续查、unknown 不重发、多日交易日历和 Python 调用说明见[自动 K 线下载指南](docs/automatic-download.md)。正式新 worker 尚未在真实终端加载验收，不可据离线测试或旧实验入口直接接管生产。
+
+任务的 item `state` 保留既有下载/校验证据；本次 probe 或协议 freshness 失败记录在 job-level `errors`，因此调用方必须同时检查 `state=verified` 和 `errors=[]`。后续 probe 成功只会清除该错误，仍会逐项读回验证，不会仅凭 probe 把旧证据当成新鲜成功。
 
 ## Python 调用
 
