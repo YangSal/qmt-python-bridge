@@ -35,6 +35,12 @@ class InnerBackend:
         if self.config.get('cache_prepared') is not True:
             raise QmtDataError('set cache_prepared=true only after QMT GUI history/financial download')
 
+    def _history_cache(self):
+        self._cache()
+
+    def _normalize_market(self, raw, codes):
+        return normalize_market(raw, codes)
+
     def download_history_data2(self, stock_list, period, start_time='', end_time='', **kwargs):
         self._cache()
 
@@ -50,7 +56,7 @@ class InnerBackend:
                            subscribe=False):
         if subscribe is not False or fill_data is not False:
             raise ValueError('migration reads require subscribe=False and fill_data=False')
-        self._cache()
+        self._history_cache()
         codes = list(stock_list or [])
         batch_size = 1 if period == 'tick' else self.batch_size
         result = {}
@@ -60,7 +66,7 @@ class InnerBackend:
                 'fields': list(field_list or []), 'stock_list': batch, 'period': period,
                 'start_time': start_time, 'end_time': end_time, 'count': count,
                 'dividend_type': dividend_type, 'fill_data': False, 'subscribe': False})
-            frames = normalize_market(raw, batch)
+            frames = self._normalize_market(raw, batch)
             for code, frame in frames.items():
                 required = set(field_list or [])
                 if period == 'tick':
@@ -176,5 +182,9 @@ def create_backend(config):
     name = config.get('backend', 'file_bridge')
     if name != 'file_bridge':
         raise ValueError('unknown QMT bridge backend: ' + str(name))
+    if config.get('history_mode', 'cache_only') == 'auto':
+        from .auto_transport import AutomaticTransport
+        from .auto_backend import AutomaticBackend
+        return AutomaticBackend(AutomaticTransport(config), config)
     transport = FileTransport(config)
     return InnerBackend(transport, config)
