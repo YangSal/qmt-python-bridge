@@ -2,6 +2,16 @@
 
 当前版本：`0.2.0a1`，实验性内置 QMT 文件桥；默认 `cache_only`，可显式 opt-in 到受限的已结束交易日 K 线自动下载。此记录是离线验证和历史实测记录，不是券商兼容性、业务完整性或生产迁移验收。
 
+## 0.2.0a1 最终源码修订验证
+
+本轮以 `80aba3f` 为基线，仅交付源码、测试与文档，没有重新构建或安装 wheel。新的源码证据与下方 `4cf5f77` 的历史 wheel 记录分开：
+
+- RED：新增的 OHLC 非正值、整日零活动和 manager 级合同用例在修复前为 **16 failed / 2 passed**；其中 manager 窄用例明确因错误返回 `verified` 而失败。
+- GREEN：`python -m pytest tests/test_download_jobs.py tests/test_auto_backend.py -q` 为 **119 passed in 44.54s**；完整 `python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q` 为 **254 passed in 52.18s**。
+- Python 3.6 AST 检查通过全部 7 个 `qmt_bridge` 模块；源码导入和 8 表财务 schema 读取通过；根 CLI、`download --help`、`download-status --help` 均退出 0。
+- 自动 K 线结构校验现在要求 OHLC 严格为正，拒绝整日 `volume` 与 `amount` 都全为零的数据，同时保留有其他活动日中的单个零成交量分钟。这不是停牌或交易日历检测，合法的整日无活动数据仍需后续业务分类。
+- 测试只使用临时文件、合成行情和模拟 ContextInfo；未连接 QMT/GUI、未下载真实行情、未修改生产配置、未推送远端，也未构建安装包。正式新 worker live acceptance 仍待完成。
+
 ## 0.2.0a1 自动下载 CLI 与历史打包验证
 
 维护约定更新：后续只更新 GitHub 源码，不再构建安装包。下方 wheel 的大小、哈希与隔离检查仅对应提交 `4cf5f77` 当时的产物，不用于证明后续源码已打包。

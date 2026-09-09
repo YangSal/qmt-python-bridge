@@ -28,6 +28,7 @@ class Context:
         self.cache = {}
         self.fail_codes = set()
         self.incomplete_codes = set()
+        self.zero_activity_codes = set()
         self.downloads = []
         self.reads = []
 
@@ -36,8 +37,11 @@ class Context:
         self.downloads.append((code, period, start))
         if code in self.fail_codes:
             return False
-        self.cache[code, period, start] = ([] if code in self.incomplete_codes
-                                         else bars(start, period))
+        data = [] if code in self.incomplete_codes else bars(start, period)
+        if code in self.zero_activity_codes:
+            for row in data:
+                row.update(volume=0, amount=0.)
+        self.cache[code, period, start] = data
 
     def get_market_data_ex_ori(self, **kwargs):
         assert kwargs['subscribe'] is False and kwargs['fill_data'] is False
@@ -302,6 +306,40 @@ def test_exact_grid_and_original_utc_are_verified(period, expected):
     result = validate_kline({'000001.SZ': bars(period=period)}, '000001.SZ', period, '20260105')
     assert result['rows'] == expected
     assert result['last_beijing'] == '2026-01-05T15:00:00+08:00'
+
+
+@pytest.mark.parametrize('period', ['1d', '1m', '5m'])
+@pytest.mark.parametrize('field,prices', [
+    ('open', {'open': 0., 'high': 12., 'low': 0., 'close': 11.}),
+    ('high', {'open': 0., 'high': 0., 'low': 0., 'close': 0.}),
+    ('low', {'open': 10., 'high': 12., 'low': 0., 'close': 11.}),
+    ('close', {'open': 10., 'high': 12., 'low': 0., 'close': 0.}),
+])
+def test_nonpositive_ohlc_is_rejected(period, field, prices):
+    from bigqmt_bridge.kline import validate_kline
+    data = bars(period=period)
+    data[0].update(prices)
+    with pytest.raises(QmtDataError, match='nonpositive.*' + field):
+        validate_kline({'000001.SZ': data}, '000001.SZ', period, '20260105')
+
+
+@pytest.mark.parametrize('period', ['1d', '1m', '5m'])
+def test_whole_day_without_volume_or_amount_is_rejected(period):
+    from bigqmt_bridge.kline import validate_kline
+    data = bars(period=period)
+    for row in data:
+        row.update(volume=0, amount=0.)
+    with pytest.raises(QmtDataError, match='zero activity'):
+        validate_kline({'000001.SZ': data}, '000001.SZ', period, '20260105')
+
+
+@pytest.mark.parametrize('period', ['1m', '5m'])
+def test_individual_zero_volume_minute_is_valid_when_day_has_activity(period):
+    from bigqmt_bridge.kline import validate_kline
+    data = bars(period=period)
+    data[0].update(volume=0, amount=0.)
+    assert validate_kline({'000001.SZ': data}, '000001.SZ', period,
+                          '20260105')['rows'] == len(data)
 
 
 @pytest.mark.parametrize('period', ['1m', '5m'])

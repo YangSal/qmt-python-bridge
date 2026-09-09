@@ -26,6 +26,24 @@ def test_auto_cold_download_and_read_without_manual_gate(rig):
     assert data['000001.SZ'].iloc[0]['close'] == 11
 
 
+def test_auto_download_never_verifies_a_whole_day_without_activity(rig):
+    from bigqmt_bridge.auto_backend import AutomaticBackend
+    from bigqmt_bridge.downloads import QmtDownloadError
+    rig[0].zero_activity_codes.add('000001.SZ')
+    rig[1]['download_timeout'] = .5
+    backend = AutomaticBackend(rig[2], rig[1])
+
+    with pytest.raises(QmtDownloadError) as failure:
+        backend.download_history_data2(['000001.SZ'], '1m', '20260105', '20260105')
+
+    report = failure.value.report
+    assert report['state'] == 'incomplete'
+    assert report['totals']['verified'] == 0
+    assert report['items'][0]['attempted'] is True
+    assert 'zero activity' in report['items'][0]['error']
+    assert rig[0].downloads == [('000001.SZ', '1m', '20260105')]
+
+
 def test_auto_reads_reject_stime_only_before_legacy_normalization(rig):
     from bigqmt_bridge.auto_backend import AutomaticBackend
     rows = bars()

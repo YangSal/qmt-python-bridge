@@ -59,8 +59,12 @@ def validate_kline(raw, stock_code, period, date):
             raise QmtDataError('invalid/non-finite K-line value: ' + field)
     if (frame[['volume', 'amount']] < 0).any().any():
         raise QmtDataError('negative K-line volume/amount')
-    if (frame[['open', 'high', 'low', 'close']] < 0).any().any():
-        raise QmtDataError('negative K-line price')
+    prices = frame[['open', 'high', 'low', 'close']]
+    nonpositive = [field for field in prices if (prices[field] <= 0).any()]
+    if nonpositive:
+        raise QmtDataError('nonpositive K-line price: ' + ','.join(nonpositive))
+    if (frame['volume'] == 0).all() and (frame['amount'] == 0).all():
+        raise QmtDataError('whole-day zero activity in K-line volume/amount')
     if ((frame['low'] > frame[['open', 'close', 'high']].min(axis=1)).any() or
             (frame['high'] < frame[['open', 'close', 'low']].max(axis=1)).any()):
         raise QmtDataError('impossible K-line OHLC relationships')

@@ -40,7 +40,7 @@
 python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.SZ --period 1d --start 20260908 --end 20260908 --output evidence/auto-daily.json
 ```
 
-只有报告聚合状态为 `verified` 且 job-level `errors` 为空时退出码才是 0；`pending`、`running`、`partial`、`incomplete`、`failed`、`unknown`、freshness/probe 错误或配置错误均返回 1，并将报告或错误写入必填的 `--output`。`verified` 只证明该任务范围已有的缓存结构证据通过校验，不证明跨源逐值一致、数据许可、全市场容量或生产可用。
+只有报告聚合状态为 `verified` 且 job-level `errors` 为空时退出码才是 0；`pending`、`running`、`partial`、`incomplete`、`failed`、`unknown`、freshness/probe 错误或配置错误均返回 1，并将报告或错误写入必填的 `--output`。结构校验要求 OHLC 严格为正、量额非负，并拒绝整日 `volume` 与 `amount` 都全为零的数据；有其他成交活动时，单个零成交量分钟仍可通过。`verified` 只证明该任务范围已有的缓存结构证据通过校验，不证明跨源逐值一致、数据许可、停牌或交易日历分类、全市场容量或生产可用。合法的整日无活动数据也需由后续业务规则分类，不能由本 Alpha 自动标记为已验证。
 
 保存输出中的 `job_id`，仅查看本地持久报告时运行：
 
@@ -58,9 +58,9 @@ python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.
 
 worker probe/协议检查失败发生在任务报告已经建立之后时，manager 会把错误写入 job-level `errors`，保留自动生成的 `job_id` 和每个 cell 的 `request_id`，并且不伪造 native attempted/failed 状态。下一次同 ID 调用在 probe 前先持久化 `download refresh in progress`，该 marker 贯穿 probe 和全部逐项复核；只有整轮结束后才清除。进程中断、并发 local status 或第一项刚刷新而其余项仍是旧证据时，marker 都会阻止 `verified` aggregate 被误报为本次成功。
 
-## 4. 多日任务必须提供交易日历
+## 4. 多日任务必须由调用方提供日期清单
 
-首版没有交易日历供应源，也不会用周一至周五猜测节假日。多日范围必须传有序、唯一、覆盖首尾边界的真实交易日 CSV：
+首版没有交易日历或停牌元数据供应源，也不会用周一至周五猜测节假日。多日范围必须由调用方传入有序、唯一、覆盖首尾边界且已自行确认的交易日 CSV；结构校验本身不会证明这些日期的业务分类：
 
 ```powershell
 python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.SZ,510300.SH --period 5m --start 20260907 --end 20260909 --expected-dates 20260907,20260908,20260909 --output evidence/auto-multi.json
@@ -93,7 +93,7 @@ status = backend.download_status(report['job_id'])  # 该方法只读本地任�
 
 ## 6. 运行目录与故障边界
 
-`records/` 是终态工单证据，`states/` 是权威状态日志，`client_jobs/` 是外部任务报告。`response_repairs/` 仅存放有界的响应修复标记：它让已完成的状态重新发布为响应，**不是第二条请求队列，也不授权重放下载**。
+`records/` 保存发布队列文件之前落盘的不可变请求身份与参数记录；它的存在不证明请求已经执行或完成。`states/` 是权威状态日志，`client_jobs/` 是外部任务报告。只有 `records/`、尚无队列文件或状态的发布窗口按 `unknown` 处理。`response_repairs/` 仅存放有界的响应修复标记：它让已完成的状态重新发布为响应，**不是第二条请求队列，也不授权重放下载**。
 
 目录权限是信任边界。不要把运行目录放进 Git、云盘同步或公开共享；监控磁盘，在确认客户端和 worker 均停止后才按明确文件制定保留/清理流程。不要递归清空活跃目录。
 

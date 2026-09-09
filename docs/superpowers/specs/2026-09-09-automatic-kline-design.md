@@ -27,9 +27,9 @@
 
 新白名单为原只读 OPERATIONS 加 download_kline。download_kline args 为 `{stock_code, period, date}`。内置全局 download_history_data/down_history_data 返回 False 或负数为 failed，None/True 仅返回调用信息及 data_ready=false。
 
-运行目录含 requests/running/responses/records/states/client_jobs。发布者在 OS 文件锁内检查最多 32 个未完成队列文件、原子保存不可变 records/<id>.json，再发布 requests/<id>.json。同一 ID/同一 operation+args 仅查询，不重发；同 ID 不同参数拒绝。args_hash 使用排序键的 canonical JSON SHA256，不包含 deadline。
+运行目录含 requests/running/responses/records/states/client_jobs。发布者在 OS 文件锁内检查最多 32 个未完成队列文件、原子保存不可变的请求身份与参数记录 records/<id>.json，再发布 requests/<id>.json。record 存在不证明请求已经执行或完成，运行状态只以 states 为准。同一 ID/同一 operation+args 仅查询，不重发；同 ID 不同参数拒绝。args_hash 使用排序键的 canonical JSON SHA256，不包含 deadline。
 
-Worker 使用独占 OS 锁，每次 poll 只处理一个请求。调用前先保存 running 状态；中断的 running 请求重启后记 unknown，不重放。records 已落盘但请求未发布也不能自动重新提交，归为 unknown；这是保守的“可能未执行”窗口。完成、失败、过期状态持久保存；状态损坏显式失败，不能删状态重新执行。调用期间超过 deadline 但正常返回仍记 returned 并保留 late 标志，不把调用结果丢掉。
+Worker 使用独占 OS 锁，每次 poll 只处理一个请求。调用前先保存 running 状态；中断的 running 请求重启后记 unknown，不重放。records 已落盘但请求未发布也不能自动重新提交，归为 unknown；这是保守的“可能未执行”窗口，不能把 record 称为终态证据。完成、失败、过期状态持久保存；状态损坏显式失败，不能删状态重新执行。调用期间超过 deadline 但正常返回仍记 returned 并保留 late 标志，不把调用结果丢掉。
 
 外部 submit/lookup/wait 分离，超时异常携带 request_id，不能包装成无 ID 的普通失败。lookup 没有结果时区分 pending 与 unknown；call 只是同步便利包装。新传输不可透明重发下载。文件校验不是身份认证，运行目录仅本机受信任用户可写；不支持网络共享目录部署。
 
@@ -39,7 +39,7 @@ Worker 使用独占 OS 锁，每次 poll 只处理一个请求。调用前先保
 
 流程为缓存校验→必要时一次下载→外部等待/读回→verified 或 incomplete/failed/unknown。仅安全的只读查询可重复；底层阻塞不可抢占，不在 QMT 内等待数据。默认单元等待 download_timeout=120 秒，有限正数；不可用时保留 report 供续查。一个单元结果未知后停止继续提交新的下载，剩余单元保持 pending，避免积压和未知放大。
 
-校验必须使用原始 time UTC 毫秒，自动模式拒绝只有 stime 的 K 线；原始 time 要求有限整数、唯一。日期必须等于目标日，六个 OHLCV 字段完整且数值有限，OHLC 关系合理、量额非负。日线恰好 1 条；1m 为标准 240 分钟网格，可多 09:30 一条；5m 为对应 48 格，可多 09:30 一条。空/停牌/非标准交易日不假设有效，记录 incomplete，由后续业务合同解释。
+校验必须使用原始 time UTC 毫秒，自动模式拒绝只有 stime 的 K 线；原始 time 要求有限整数、唯一。日期必须等于目标日，六个 OHLCV 字段完整且数值有限，OHLC 严格为正且关系合理、量额非负；整日 `volume` 与 `amount` 都全为零时拒绝，但日内有其他活动时允许单个零成交量分钟。日线恰好 1 条；1m 为标准 240 分钟网格，可多 09:30 一条；5m 为对应 48 格，可多 09:30 一条。这些是可观察的结构规则，不是历史停牌或交易日历检测：本 Alpha 没有相应元数据源，合法的整日无活动数据也会记录 incomplete，须由后续业务合同分类。
 
 总任务仅所有单元 verified 且任务级 errors 为空才成功，其报告 state 也使用 `verified`（不新增 `success` 枚举），与 CLI 成功退出条件一致。成功只表示本次所选日期的结构可读性，不是跨源逐值一致、全市场容量或生产验收。completed job 再调用须复核缓存；不能只凭旧报告保证当前可读。新一轮复核必须持久保留未完成标记直到逐项复核结束，不能在 probe 刚成功或只复核部分单元时清除，避免并发状态查询或中断后把旧证据当成新成功。报告不保存全量行情，只保存请求 ID、状态、时间、校验摘要和错误。
 

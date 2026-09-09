@@ -1,7 +1,8 @@
 # coding: ascii
 """Explicit opt-in QMT strategy for the durable automatic K-line worker."""
-# Server modules are intentionally not hot-reloaded. Restart or reload this
-# strategy after code updates; no transparent hot-reload promise is made.
+# Imported worker modules stay cached. Once imported, upgrades require a safely
+# arranged QMT client restart or a separately versioned module; rerunning this
+# same strategy cannot refresh them. No hot reload is implemented.
 import sys
 
 PROJECT_ROOT = r'D:\bigqmt-data-bridge'
