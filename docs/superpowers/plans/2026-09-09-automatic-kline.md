@@ -69,7 +69,7 @@ def test_disabled_download_never_reaches_api(tmp_path):
 - [ ] **RED:** Add end-to-end tests using Task 1's real file transport and fake ContextInfo cache. Assert cold cache completes, warm cache avoids download, status survives new manager, same parameters produce same job ID, wrong explicit ID parameters reject, unknown state reads/reconciles but never redownloads, incomplete data doesn't succeed, failed cells recorded, unknown cell stops new submissions, partial count correct. Cover 2 codes × 2 provided dates, cap validation before any publish.
 
 ```python
-def test_old_worker_is_rejected_before_download():
+def test_old_worker_is_rejected_before_download(tmp_path):
     from bigqmt_bridge.downloads import DownloadManager
     from bigqmt_bridge import QmtDataError
     import pytest
@@ -78,7 +78,7 @@ def test_old_worker_is_rejected_before_download():
             assert op == 'probe'
             return {'worker_version':2}
     with pytest.raises(QmtDataError):
-        DownloadManager(Old(), {}).download(['000001.SZ'], '1d', '20260908', '20260908')
+        DownloadManager(Old(), {'bridge_dir':str(tmp_path)}).download(['000001.SZ'], '1d', '20260908', '20260908')
 ```
 
 - [ ] Run `python -m pytest tests/test_download_jobs.py tests/test_auto_backend.py -q`, record failures.
@@ -89,7 +89,7 @@ def test_old_worker_is_rejected_before_download():
 
 ### Task 3: CLI、部署文档与打包验证
 
-**Files:** Modify `bigqmt_bridge/cli.py`, `README.md`, `pyproject.toml`, `docs/validation.md`; create `config.auto.example.json`, `docs/automatic-download.md`, `tests/test_auto_cli.py`.
+**Files:** Modify `bigqmt_bridge/cli.py`, `README.md`, `pyproject.toml`, `docs/validation.md`, `docs/release-checklist.md`, `.gitignore`; create `config.auto.example.json`, `docs/automatic-download.md`, `tests/test_auto_cli.py`.
 
 **Interfaces:** Keep existing probe/sample/compare untouched in default behavior. Add `download` with --config, --bridge-dir, --codes, --period (1d/1m/5m), --start, --end, --expected-dates CSV, --job-id, --output(required); force explicit history_mode=auto (config or CLI command scope), refuse native. Add `download-status` with --config, --bridge-dir, --job-id, --output(required), no QMT requests. CLI returns 0 only verified download, else 1 with persisted report/error and IDs. No raw market data in reports.
 
@@ -104,5 +104,6 @@ python -m bigqmt_bridge download-status --config config.auto.example.json --job-
 
 - [ ] Write sample JSON with backend=file_bridge, history_mode=auto, bridge_dir=D:\\bigqmt-auto-runtime, timeout=10, poll_interval=0.1, download_timeout=120, cache_prepared=false. Document ENABLE_DOWNLOADS opt-in, unchecked local-Python box, separate entry, exact CLI/Python commands, multi-day calendar requirement, same-ID resume, unknown-state no resend, seconds-level polling, no production readiness promise. Keep old quickstart clearly labelled cache_only. Skill remains legacy-only this release; add prominent README warning that skill does not yet cover auto workflow instead of silently teaching old download semantics.
 - [ ] Change package version to 0.2.0a1 and description to experimental embedded QMT file bridge with verified K-line downloads; do not publish. New modules included by existing package rules, no experiment/evidence in wheel.
+- [ ] Add records/, states/, client_jobs/ to .gitignore for accidental project-root runtime placement. Update release-checklist to distinguish cache_only and auto, preserve Alpha/no trading/not production-accepted, and check new runtime artifacts never enter Git/wheel.
 - [ ] Full tests, build wheel with `python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist`, CLI help and isolated wheel import/CLI help check, inspect archive names for evidence/config.local/credentials. Record evidence honestly; formal live test pending until new entry actually loaded.
 - [ ] Self-review and commit only task-owned changes: `feat: expose automatic download CLI and deployment guide`. Controller handles final broad review and live handoff.
