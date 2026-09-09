@@ -6,6 +6,8 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 
 **实验性 / Alpha · 只读 · 不下单 · 不自动下载历史数据**
 
+以上是当前发行版范围。后续目标是让数据采集与量化交易继续运行在外部 Python，通过内置薄桥自动下载、获取行情和受控交易。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)已在一个模拟终端测通股票、ETF、指数的单日自动下载与读取，以及单股 Tick/快照；正式 SDK、交易和生产切换尚未完成。实验入口及使用边界见 [qualification_v1](experiments/qualification_v1/README.md)，不要把下方只读发行版的 `download_*` 当成真实下载。
+
 本项目从一个已有数据采集项目中提取。目标是保留外部 Python 的 pandas、研究和存储环境，让内置 Python 只承担有限的数据读取。它不是完整的 `xtquant` 替代品，也不保证任意券商版本、账号权限和数据种类均可用。
 
 > 可以开源代码，不等于可以转授权行情。请自行确认券商、迅投及数据提供方的接口使用和数据再分发许可。本项目不附带 QMT、xtquant、券商源码、账号或真实行情样本，不提供权限绕过。
@@ -95,7 +97,7 @@ Copy-Item -LiteralPath config.example.json -Destination config.local.json
 
    `PROJECT_ROOT` 是包含 `qmt_bridge` 子目录的源码根目录；`BRIDGE_DIR` 是独立运行目录，不是源码目录，也不要指向其他桥正在使用的目录。
 
-4. 使用客户端支持定时回调的运行方式启动策略，不用历史回测结果证明桥在线。脚本通过 `C.run_time('bridge_poll', '2nSecond', ...)` 注册回调，`handlebar` 不承担取数工作。
+4. **取消勾选编辑器右上角的“启动本地python”**，点击“编译”保存，再点击“运行”（不是“回测”）。该选项开启时按普通脚本执行，不会触发 `init` / `handlebar`，本策略可能只显示“开始运行→结束运行”。参见迅投官方[独立 Python 进程说明](https://dict.thinktrader.net/innerApi/interface_operation.html#独立python进程)。脚本通过 `C.run_time('bridge_poll', '2nSecond', ...)` 注册回调，`handlebar` 不承担取数工作；不用历史回测结果证明桥在线。
 5. 确认日志出现 `QMT data bridge ready: ...`。还需要下一步外部 probe 验证定时器实际工作。
 
 策略文件使用 ASCII，便于兼容需要 GBK 的编辑器。路径若包含中文，需自行保证编辑器保存编码与文件编码声明一致；建议初次测试使用纯英文路径。
@@ -103,6 +105,8 @@ Copy-Item -LiteralPath config.example.json -Destination config.local.json
 **不要**在内置 Python 中运行 `pip install .`，也不要把外部 Python 的 site-packages 加入其路径。内置端只加载源码根目录里的 `qmt_bridge` 包。离线测试检查了 Python 3.6 语法，但不保证每个券商环境都提供同一套 API。
 
 升级服务端时，先确认没有活跃客户端请求，再停止该桥策略、更新文件并重新启动。修改 Python 文件不会自动让已运行的策略加载新实现。不要为测试随意停止已有生产桥。
+
+部分内置环境缺少 `importlib`。策略现在允许在这种环境中正常首次加载，并提示 `module reload unavailable`，这不是启动失败；仍须看到 `QMT data bridge ready` 并通过外部 probe。缺少该模块时，停止再启动策略可能仍使用 Python 缓存中的旧 worker：后续升级已加载的服务端代码，需要安排安全窗口重启 QMT 客户端。不要自动重启客户端或混入外部 Python 标准库；其他依赖错误仍会原样抛出。
 
 ### 3. 验证连接
 
@@ -257,7 +261,9 @@ download_history_data2(...), download_financial_data2(...), download_index_weigh
 | 现象 | 检查与处理 |
 |---|---|
 | `QMT bridge timeout` | 对比两端目录、ACL、策略日志、定时器是否运行、GUI 是否被阻塞；停止自动重试后再调查 |
+| 只有“开始运行→结束运行”，没有 ready | 检查“启动本地python”是否勾选；本桥需要取消勾选后编译保存，再运行，并检查“日志输出” |
 | `No module named qmt_bridge` | `PROJECT_ROOT` 必须指向包含该包的源码根目录；不是包自身目录 |
+| 第 4 行 `No module named importlib` | 旧版策略将重载模块作为硬依赖。重新打开本项目最新 `qmt_bridge/strategy.py` 并完整替换编辑器中的旧内容；只修改磁盘文件不一定会更新 QMT 已保存的策略副本。不需要 `pip install importlib` |
 | `No module named pandas` 出现在内置端 | 确认报错接口及 `market_reader`；原始行情可能绕过该依赖，财务封装仍可能需要它；不能混装外部 Python 库 |
 | `cache_prepared` 错误 | 人工确认实际缓存后再设置；不能为绕过错误直接改 true |
 | `empty QMT cache` / 缺字段 | 核对代码、周期、日期、下载、权限及维护状态；空不是验收成功 |

@@ -41,6 +41,8 @@ def beijing_date(value):
 
 def utc_ms(values):
     series = pd.Series(values).reset_index(drop=True)
+    if series.isna().any():
+        raise QmtDataError('missing market timestamp')
     text = series.astype(str)
     if text.str.fullmatch(r'\d{12,13}').all():
         return pd.to_numeric(series, errors='raise').astype('int64')
@@ -64,7 +66,8 @@ def normalize_market(raw, codes):
         fields, data = raw['fields'], raw['data']
         if not isinstance(fields, list) or not isinstance(data, dict):
             raise QmtDataError('invalid raw market envelope')
-        # Match the terminal's own DataFrame assembly, but in external Python.
+        # Assemble outside QMT, preserving UTC time even when fields omitted it.
+        # The terminal's stime may use the Windows timezone, not Beijing time.
         columns = (fields if 'stime' in fields else ['stime'] + fields) if fields else None
         raw = {}
         for code, rows in data.items():
@@ -79,7 +82,12 @@ def normalize_market(raw, codes):
                     complete = False
                 if not complete:
                     raise QmtDataError('raw market fields/row width incomplete: ' + code)
-            raw[code] = pd.DataFrame(rows, columns=columns)
+            selected = columns
+            has_time = (isinstance(rows, dict) and 'time' in rows) or (
+                isinstance(rows, list) and any(isinstance(row, dict) and 'time' in row for row in rows))
+            if columns and has_time and 'time' not in columns:
+                selected = ['time'] + columns
+            raw[code] = pd.DataFrame(rows, columns=selected)
     result = {}
     for code in codes:
         if code not in raw:
