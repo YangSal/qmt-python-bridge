@@ -371,3 +371,84 @@ def test_complete_original_time_shapes_are_accepted(shape):
     raw = {'__qmt_raw_market__': 1, 'fields': [key for key in row if key != 'stime'],
            'data': {'000001.SZ': value}}
     assert validate_kline(raw, '000001.SZ', '1d', '20260105')['rows'] == 1
+
+
+@pytest.mark.parametrize('fault', ['aggregate', 'totals', 'boolean_total', 'validation_missing',
+    'rows', 'date', 'naive_time', 'different_daily_end', 'verified_error', 'pending_evidence',
+    'failed_unattempted', 'failure_without_error', 'missing_timestamp'])
+def test_status_rejects_inconsistent_state_and_evidence(rig, fault):
+    rig[0].cache['000001.SZ', '1d', '20260105'] = bars()
+    report = manager(rig).download(['000001.SZ'], '1d', '20260105', '20260105')
+    item = report['items'][0]
+    if fault == 'aggregate':
+        item.update(state='pending', validation=None)
+    elif fault == 'totals': report['totals']['verified'] = 0
+    elif fault == 'boolean_total': report['totals']['total'] = True
+    elif fault == 'validation_missing': item['validation'] = None
+    elif fault == 'rows': item['validation']['rows'] = 0
+    elif fault == 'date': item['validation']['first_beijing'] = '2026-01-06T15:00:00+08:00'
+    elif fault == 'naive_time': item['validation']['first_beijing'] = '2026-01-05T15:00:00'
+    elif fault == 'different_daily_end': item['validation']['last_beijing'] = '2026-01-05T15:01:00+08:00'
+    elif fault == 'verified_error': item['error'] = 'previous failure'
+    elif fault == 'pending_evidence':
+        item['state'] = report['state'] = 'pending'
+        report['totals'].update(verified=0, pending=1)
+    elif fault == 'failed_unattempted':
+        item.update(state='failed', validation=None, error='native failed')
+        report['state'] = 'failed'
+        report['totals'].update(verified=0, failed=1)
+    elif fault == 'failure_without_error':
+        item.update(state='incomplete', validation=None)
+        report['state'] = 'incomplete'
+        report['totals'].update(verified=0, incomplete=1)
+    elif fault == 'missing_timestamp': del item['updated_at']
+    path = rig[2].root / 'client_jobs' / (report['job_id'] + '.json')
+    path.write_text(json.dumps(report))
+    count = len(list((rig[2].root / 'records').glob('*.json')))
+    with pytest.raises(QmtDataError):
+        manager(rig).status(report['job_id'])
+    with pytest.raises(QmtDataError):
+        manager(rig).download(['000001.SZ'], '1d', '20260105', '20260105')
+    assert len(list((rig[2].root / 'records').glob('*.json'))) == count
+
+
+@pytest.mark.parametrize('native_state,expected', [('returned', 'incomplete'),
+                                                 ('failed', 'failed'), ('expired', 'failed')])
+def test_resume_read_timeout_preserves_known_native_outcome(rig, native_state, expected):
+    from bigqmt_bridge.downloads import QmtDownloadError
+    from qmt_bridge.protocol import atomic_json
+    class StopAfterFirst(Exception):
+        pass
+    if native_state == 'failed':
+        rig[0].fail_codes.add('000001.SZ')
+    if native_state == 'expired':
+        submit = rig[2].submit
+        def expire(op, args, request_id=None):
+            request_id = submit(op, args, request_id)
+            if op == 'download_kline' and args['stock_code'] == '000001.SZ':
+                path = rig[2].root / 'requests' / (request_id + '.json')
+                request = json.loads(path.read_text())
+                request['deadline'] = 1
+                atomic_json(path, request)
+            return request_id
+        rig[2].submit = expire
+    def stop(report):
+        raise StopAfterFirst()
+    with pytest.raises(StopAfterFirst):
+        manager(rig).download(['000001.SZ', '000002.SZ'], '1d', '20260105', '20260105', callback=stop)
+    original_wait = rig[2].wait
+    def read_timeout(request_id, timeout=None):
+        result = original_wait(request_id, timeout)
+        record = json.loads((rig[2].root / 'records' / (request_id + '.json')).read_text())
+        if record['operation'] == 'market_data' and record['args']['stock_list'] == ['000001.SZ']:
+            raise QmtRequestTimeout(request_id)
+        return result
+    rig[2].wait = read_timeout
+    with pytest.raises(QmtDownloadError) as resumed:
+        manager(rig).download(['000001.SZ', '000002.SZ'], '1d', '20260105', '20260105')
+    report = resumed.value.report
+    assert report['state'] == 'partial'
+    assert [item['state'] for item in report['items']] == [expected, 'verified']
+    assert rig[0].downloads.count(('000001.SZ', '1d', '20260105')) == (0 if native_state == 'expired' else 1)
+    if native_state in ('failed', 'expired'):
+        assert ('failure' if native_state == 'failed' else 'expired') in report['items'][0]['error']

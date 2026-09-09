@@ -64,6 +64,69 @@ def _item_id(job_id, request, code, date):
                         'period': request['period'], 'date': date})[:32]
 
 
+def _summary(items):
+    counts = {state: sum(item['state'] == state for item in items) for state in ITEM_STATES}
+    counts['total'] = len(items)
+    if counts['unknown']:
+        state = 'unknown'
+    elif counts['verified'] == counts['total']:
+        state = 'verified'
+    elif counts['running'] or counts['awaiting_data']:
+        state = 'running'
+    elif counts['pending']:
+        state = 'pending'
+    elif counts['verified']:
+        state = 'partial'
+    elif counts['failed']:
+        state = 'failed'
+    else:
+        state = 'incomplete'
+    return state, counts
+
+
+def _timestamp(value):
+    parsed = dt.datetime.fromisoformat(value)
+    if parsed.utcoffset() is None:
+        raise ValueError('report timestamp must include timezone')
+    return parsed
+
+
+def _validate_item_evidence(item, period):
+    _timestamp(item['updated_at'])
+    state, error, evidence = item['state'], item['error'], item['validation']
+    if error is not None and (not isinstance(error, str) or not error):
+        raise ValueError('item error must be null or nonempty text')
+    if state in ('running', 'awaiting_data', 'failed') and not item['attempted']:
+        raise ValueError('native invocation state requires attempted flag')
+    if state == 'pending' and (item['attempted'] or error is not None):
+        raise ValueError('pending item cannot contain an attempted invocation or error')
+    if state in ('failed', 'incomplete', 'unknown') and error is None:
+        raise ValueError('unsuccessful item requires error evidence')
+    if state != 'verified':
+        if evidence is not None:
+            raise ValueError('unverified item cannot contain validation evidence')
+        return
+    if error is not None or not isinstance(evidence, dict):
+        raise ValueError('verified item requires validation and no error')
+    if set(evidence) != {'rows', 'first_beijing', 'last_beijing'}:
+        raise ValueError('invalid validation evidence fields')
+    rows = evidence['rows']
+    allowed = {'1d': (1,), '1m': (240, 241), '5m': (48, 49)}[period]
+    if type(rows) is not int or rows not in allowed:
+        raise ValueError('invalid validated row count')
+    first, last = _timestamp(evidence['first_beijing']), _timestamp(evidence['last_beijing'])
+    if any(value.utcoffset() != dt.timedelta(hours=8) or
+           value.strftime('%Y%m%d') != item['date'] for value in (first, last)):
+        raise ValueError('validation timestamps must match the requested Beijing date')
+    if period == '1d':
+        if first != last:
+            raise ValueError('one daily row must have identical first/last timestamps')
+    else:
+        minute = 30 if rows == allowed[1] else (31 if period == '1m' else 35)
+        if first.time() != dt.time(9, minute) or last.time() != dt.time(15):
+            raise ValueError('validation timestamps do not match the standard minute grid')
+
+
 class DownloadManager:
     def __init__(self, transport, config):
         validate_config(config)
@@ -98,29 +161,20 @@ class DownloadManager:
                         item['request_id'] != _item_id(job_id, request, code, date) or
                         item['state'] not in ITEM_STATES or type(item['attempted']) is not bool):
                     raise ValueError('stored job item identity/state mismatch')
+                _validate_item_evidence(item, request['period'])
+            _timestamp(report['created_at'])
+            _timestamp(report['updated_at'])
+            state, totals = _summary(report['items'])
+            if (report['state'] != state or report['totals'] != totals or
+                    any(type(value) is not int for value in report['totals'].values())):
+                raise ValueError('stored job aggregate state/totals differ from its items')
             return report
         except Exception as exc:
             raise QmtDataError('cannot read valid download job %s: %s' % (job_id, exc)) from exc
 
     def _save(self, report):
-        counts = {state: sum(item['state'] == state for item in report['items']) for state in ITEM_STATES}
-        counts['total'] = len(report['items'])
-        report['totals'] = counts
-        if counts['unknown']:
-            state = 'unknown'
-        elif counts['verified'] == counts['total']:
-            state = 'verified'
-        elif counts['running'] or counts['awaiting_data']:
-            state = 'running'
-        elif counts['pending']:
-            state = 'pending'
-        elif counts['verified']:
-            state = 'partial'
-        elif counts['failed']:
-            state = 'failed'
-        else:
-            state = 'incomplete'
-        report['state'], report['updated_at'] = state, _now()
+        report['state'], report['totals'] = _summary(report['items'])
+        report['updated_at'] = _now()
         atomic_json(self._path(report['job_id']), report)
 
     def _transition(self, report, item, state, error=None, validation=None):
@@ -151,6 +205,7 @@ class DownloadManager:
 
     def _advance(self, report, item):
         deadline = time.monotonic() + self.timeout
+        original = None
         try:
             if item['attempted']:
                 # Corrupt/mismatched native evidence cannot be hidden by a warm
@@ -160,9 +215,19 @@ class DownloadManager:
                     'period': report['request']['period'], 'date': item['date']})
                 if original.get('args_hash') not in (None, expected_hash):
                     raise QmtDataError('download request identity differs from job scope')
-            validation, error = self._cached(report, item, deadline)
         except Exception as exc:
             self._transition(report, item, 'unknown', exc)
+            return
+        try:
+            validation, error = self._cached(report, item, deadline)
+        except Exception as exc:
+            native_state = original.get('state') if original is not None else None
+            if native_state == 'returned':
+                self._transition(report, item, 'incomplete', exc)
+            elif native_state in ('failed', 'expired'):
+                self._transition(report, item, 'failed', original.get('error') or native_state)
+            else:
+                self._transition(report, item, 'unknown', exc)
             return
         if validation is not None:
             self._transition(report, item, 'verified', validation=validation)

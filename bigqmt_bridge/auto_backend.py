@@ -1,4 +1,6 @@
 """Automatic K-line facade; metadata and legacy cache contracts stay inherited."""
+import pandas as pd
+
 from . import QmtDataError
 from .backend import InnerBackend, bridge_errors
 from .downloads import DownloadManager
@@ -14,10 +16,14 @@ class AutomaticBackend(InnerBackend):
         pass
 
     def _normalize_market(self, raw, codes):
-        # Validate original numeric time before the compatible normalizer can
-        # choose stime/index fallbacks. Do not duplicate its normalization body.
-        original_frames(raw, codes)
-        return super()._normalize_market(raw, codes)
+        frames = original_frames(raw, codes)
+        for frame in frames.values():
+            # The legacy normalizer also accepts calendar-shaped integers.
+            # Give it explicit UTC values built only from validated epoch ms,
+            # with fixed precision so mixed millisecond values parse uniformly.
+            frame['time'] = pd.to_datetime(frame['time'].tolist(), unit='ms', utc=True).map(
+                lambda value: value.isoformat(timespec='milliseconds'))
+        return super()._normalize_market(frames, codes)
 
     def download_history_data2(self, stock_list, period, start_time='', end_time='', *,
                                expected_dates=None, job_id=None, callback=None):

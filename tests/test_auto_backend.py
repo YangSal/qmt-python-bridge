@@ -86,3 +86,35 @@ def test_auto_original_time_shape_contract(shape):
            'data': {'000001.SZ': data}}
     with pytest.raises(QmtDataError, match='time|UTC'):
         original_frames(raw, ['000001.SZ'])
+
+
+@pytest.mark.parametrize('shape', ['records', 'columns', 'positional', 'frame'])
+@pytest.mark.parametrize('times', [[20260105], [20260105, 1767596400000]])
+def test_auto_normalization_preserves_every_original_utc_integer(tmp_path, shape, times):
+    from bigqmt_bridge.auto_backend import AutomaticBackend
+    row = {'stime': 'wrong-local-time', 'time': 20260105, 'close': 11.}
+    rows = [dict(row, time=value) for value in times]
+    if shape == 'columns':
+        data = {key: [item[key] for item in rows] for key in row}
+    elif shape == 'positional': data = [list(item.values()) for item in rows]
+    elif shape == 'frame':
+        data = {'__frame__': True, 'columns': list(row), 'index': list(range(len(rows))), 'data': rows}
+    else: data = rows
+    payload = ({'000001.SZ': data} if shape == 'frame' else
+               {'__qmt_raw_market__': 1, 'fields': ['time', 'close'], 'data': {'000001.SZ': data}})
+    class Cached:
+        def call(self, operation, args):
+            assert operation == 'market_data'
+            return payload
+    backend = AutomaticBackend(Cached(), {'bridge_dir': str(tmp_path)})
+    result = backend.get_market_data_ex(['close'], ['000001.SZ'])['000001.SZ']
+    assert result['time'].tolist() == times
+    assert result['close'].tolist() == [11.] * len(times)
+
+
+def test_legacy_calendar_timestamp_interpretation_remains_compatible(tmp_path):
+    class Cached:
+        def call(self, operation, args):
+            return {'000001.SZ': [{'time': 20260105, 'close': 11.}]}
+    backend = InnerBackend(Cached(), {'bridge_dir': str(tmp_path), 'cache_prepared': True})
+    assert backend.get_market_data_ex(['close'], ['000001.SZ'])['000001.SZ']['time'].tolist() == [1767542400000]
