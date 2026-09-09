@@ -115,6 +115,20 @@ class AutomaticTransport(object):
                 'args_hash': args_hash, 'state': state, 'data': None,
                 'error': error}
 
+    def _read_terminal(self, request_id, record, state_path, response_path):
+        state = None
+        if state_path.exists():
+            state = self._validate_envelope(
+                request_id, load_json(state_path, MAX_BYTES), record)
+        response = None
+        if response_path.exists():
+            response = self._validate_envelope(
+                request_id, read_result(str(self.root / 'responses'), request_id),
+                record)
+        if state is not None and response is not None and state != response:
+            raise ValueError('server state and response disagree')
+        return state if state is not None else response
+
     def lookup(self, request_id):
         try:
             check_id(request_id)
@@ -132,21 +146,10 @@ class AutomaticTransport(object):
             if record is None and (response_path.exists() or state_path.exists() or
                                    any(path.exists() for path in queued_paths)):
                 raise ValueError('immutable request record is missing')
-            state = None
-            if state_path.exists():
-                state = self._validate_envelope(
-                    request_id, load_json(state_path, MAX_BYTES), record)
-            response = None
-            if response_path.exists():
-                response = self._validate_envelope(
-                    request_id, read_result(str(self.root / 'responses'), request_id),
-                    record)
-            if state is not None and response is not None and state != response:
-                raise ValueError('server state and response disagree')
-            if state is not None:
-                return state
-            if response is not None:
-                return response
+            terminal = self._read_terminal(
+                request_id, record, state_path, response_path)
+            if terminal is not None:
+                return terminal
         except Exception as exc:
             raise QmtDataError('corrupt automatic QMT journal for %s: %s' %
                                (request_id, exc)) from exc
@@ -155,6 +158,16 @@ class AutomaticTransport(object):
                      for directory in ('requests', 'running'))
         if queued:
             return self._status(request_id, args_hash, 'pending')
+        try:
+            terminal = self._read_terminal(
+                request_id, record,
+                self.root / 'states' / (request_id + '.json'),
+                self.root / 'responses' / (request_id + '.json'))
+            if terminal is not None:
+                return terminal
+        except Exception as exc:
+            raise QmtDataError('corrupt automatic QMT journal for %s: %s' %
+                               (request_id, exc)) from exc
         return self._status(request_id, args_hash, 'unknown',
                             'no queued request or terminal server journal')
 

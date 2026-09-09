@@ -66,11 +66,11 @@ def validate_download(args):
     if not isinstance(args, dict) or set(args) != {'stock_code', 'period', 'date'}:
         raise ValueError('download args must contain stock_code, period and date only')
     stock_code, period, date = args['stock_code'], args['period'], args['date']
-    if not isinstance(stock_code, str) or not re.match(r'^[0-9]{6}\.(SH|SZ|BJ)$', stock_code):
+    if not isinstance(stock_code, str) or not re.match(r'^[0-9]{6}\.(SH|SZ|BJ)\Z', stock_code):
         raise ValueError('invalid stock_code')
     if period not in ('1d', '1m', '5m'):
         raise ValueError('unsupported download period')
-    if not isinstance(date, str) or not re.match(r'^[0-9]{8}$', date):
+    if not isinstance(date, str) or not re.match(r'^[0-9]{8}\Z', date):
         raise ValueError('date must be YYYYMMDD')
     try:
         requested = datetime.date(int(date[:4]), int(date[4:6]), int(date[6:]))

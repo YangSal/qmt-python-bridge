@@ -392,3 +392,85 @@ def test_corrupt_response_is_not_reexecuted_or_allowed_to_break_poll(tmp_path):
         assert worker.poll() is True
     finally:
         worker.close()
+
+
+def test_success_state_survives_response_publish_failure_and_is_repaired(
+        tmp_path, monkeypatch):
+    import qmt_bridge.auto_worker as auto_worker
+    from qmt_bridge.auto_worker import AutomaticWorker
+    from bigqmt_bridge.auto_transport import AutomaticTransport
+
+    api_calls = []
+    publish_attempts = []
+    real_publish = auto_worker.publish_result
+
+    def download(*args):
+        api_calls.append(args)
+        return None
+
+    def fail_once(*args):
+        publish_attempts.append(args[1])
+        if len(publish_attempts) == 1:
+            raise OSError('injected response write failure')
+        return real_publish(*args)
+
+    monkeypatch.setattr(auto_worker, 'publish_result', fail_once)
+    worker = AutomaticWorker(str(tmp_path), object(),
+                             {'download_history_data': download},
+                             downloads_enabled=True)
+    transport = AutomaticTransport({'bridge_dir': str(tmp_path), 'timeout': 1})
+    rid = transport.submit('download_kline', _download_args())
+    try:
+        assert worker.poll() is True
+        state = json.loads((tmp_path / 'states' / (rid + '.json')).read_text())
+        assert state['state'] == 'returned'
+        assert worker.poll() is True
+        result = transport.lookup(rid)
+        assert result['state'] == 'returned'
+        assert result['data']['return_value'] is None
+        assert len(api_calls) == 1
+        assert len(publish_attempts) == 2
+    finally:
+        worker.close()
+
+
+def test_lookup_rechecks_terminal_state_after_queue_disappears(
+        tmp_path, monkeypatch):
+    from qmt_bridge.protocol import atomic_json, publish_result
+    from bigqmt_bridge.auto_transport import AutomaticTransport
+
+    transport = AutomaticTransport({'bridge_dir': str(tmp_path), 'timeout': 1})
+    rid = transport.submit('probe', {})
+    record = json.loads((tmp_path / 'records' / (rid + '.json')).read_text())
+    request_path = tmp_path / 'requests' / (rid + '.json')
+    running_path = tmp_path / 'running' / (rid + '.json')
+    state_path = tmp_path / 'states' / (rid + '.json')
+    response_path = tmp_path / 'responses' / (rid + '.json')
+    envelope = {
+        'auto_protocol': 'auto-kline-v1', 'request_id': rid,
+        'args_hash': record['args_hash'], 'state': 'returned',
+        'data': {'completed': True}, 'error': None,
+    }
+    real_exists = Path.exists
+    transitioned = []
+
+    def interleaved_exists(path):
+        if path == state_path and not transitioned:
+            return False
+        if path == response_path and not transitioned:
+            return False
+        if path == request_path and not transitioned:
+            request_path.unlink()
+            atomic_json(state_path, envelope)
+            publish_result(str(response_path.parent), rid, envelope, None)
+            transitioned.append(True)
+            return False
+        if path == running_path and transitioned:
+            return False
+        return real_exists(path)
+
+    monkeypatch.setattr(Path, 'exists', interleaved_exists)
+    result = transport.lookup(rid)
+    assert transitioned == [True]
+    assert result['state'] == 'returned'
+    assert result['data'] == {'completed': True}

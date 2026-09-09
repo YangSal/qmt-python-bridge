@@ -22,6 +22,8 @@ def test_request_hash_is_canonical_and_binds_operation():
     {'stock_code': '000001.SZ', 'period': '1d', 'date': '2020-01-02'},
     {'stock_code': '000001.SZ', 'period': '1d', 'date': '20200230'},
     {'stock_code': '000001.SZ', 'period': '1d', 'date': '29990101'},
+    {'stock_code': '000001.SZ\n', 'period': '1d', 'date': '20200102'},
+    {'stock_code': '000001.SZ', 'period': '1d', 'date': '20200102\n'},
     {'stock_code': '000001.SZ', 'period': '1d', 'date': '20200102', 'extra': True},
 ])
 def test_validate_download_rejects_malformed_or_non_past_requests(args):

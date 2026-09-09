@@ -70,9 +70,35 @@ class AutomaticWorker(object):
         if late is not None:
             envelope['late'] = bool(late)
         atomic_json(self._path('states', request_id), envelope)
-        publish_result(os.path.join(self.root, 'responses'), request_id,
-                       envelope, None)
+        try:
+            publish_result(os.path.join(self.root, 'responses'), request_id,
+                           envelope, None)
+        except Exception:
+            # The state journal is authoritative. A later poll repairs the
+            # response without changing or replaying the completed operation.
+            pass
         return envelope
+
+    def _repair_response(self):
+        states = os.path.join(self.root, 'states')
+        for name in sorted(name for name in os.listdir(states)
+                           if name.endswith('.json')):
+            request_id = name[:-5]
+            response_path = self._path('responses', request_id)
+            if os.path.exists(response_path):
+                continue
+            try:
+                check_id(request_id)
+                envelope = self._validate_envelope(
+                    request_id, load_json(os.path.join(states, name), MAX_BYTES))
+                publish_result(os.path.join(self.root, 'responses'), request_id,
+                               envelope, None)
+                return True
+            except Exception:
+                # Preserve corrupt state evidence. A transient response failure
+                # is retried by the next timer callback.
+                continue
+        return False
 
     def _recover_running(self):
         directory = os.path.join(self.root, 'running')
@@ -145,6 +171,8 @@ class AutomaticWorker(object):
     def poll(self):
         if self._lock is None:
             raise RuntimeError('worker is closed')
+        if self._repair_response():
+            return True
         requests = os.path.join(self.root, 'requests')
         names = sorted(name for name in os.listdir(requests)
                        if name.endswith('.json'))
