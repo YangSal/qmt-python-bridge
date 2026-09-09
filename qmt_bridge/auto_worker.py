@@ -82,22 +82,35 @@ class AutomaticWorker(object):
             pass
         else:
             if os.path.exists(repair_path):
-                os.unlink(repair_path)
+                try:
+                    os.unlink(repair_path)
+                except Exception:
+                    # The response is durable; leave the marker for cleanup.
+                    pass
         return envelope
+
+    def _save_terminal(self, request_id, args_hash, state, data, error,
+                       late=None):
+        try:
+            self._terminal(request_id, args_hash, state, data, error, late=late)
+        except Exception:
+            # Persistence failure is not evidence that the native call failed.
+            # With no terminal journal the client conservatively reports unknown.
+            pass
 
     def _repair_response(self):
         repairs = os.path.join(self.root, 'response_repairs')
         entries = os.scandir(repairs)
-        candidate = None
         try:
-            for entry in entries:
-                if entry.name.endswith('.json'):
-                    candidate = entry.path
-                    break
+            entry = next(entries, None)
         finally:
             entries.close()
-        if candidate is None:
+        if entry is None:
             return False
+        candidate = entry.path
+        if not entry.name.endswith('.json'):
+            self._quarantine(candidate)
+            return True
         request_id = os.path.basename(candidate)[:-5]
         try:
             check_id(request_id)
@@ -119,7 +132,12 @@ class AutomaticWorker(object):
             # Keep the marker for a later bounded retry.
             return True
         if os.path.exists(candidate):
-            os.unlink(candidate)
+            try:
+                os.unlink(candidate)
+            except Exception:
+                # The response is already durable. Retain the marker so a later
+                # bounded poll can retry cleanup without replaying the request.
+                pass
         return True
 
     def _recover_running(self):
@@ -266,17 +284,32 @@ class AutomaticWorker(object):
                 deadline = float(request['deadline'])
                 if not math.isfinite(deadline):
                     raise ValueError('deadline must be finite')
-                if time.time() >= deadline:
-                    self._terminal(request_id, record['args_hash'], 'expired', None,
-                                   'request expired before execution')
-                    return True
-                result = self._dispatch(record['operation'], record['args'])
-                self._terminal(request_id, record['args_hash'], 'returned', result,
-                               None, late=time.time() >= deadline)
             except Exception as exc:
                 args_hash = record['args_hash'] if record is not None else None
-                self._terminal(request_id, args_hash, 'failed', None,
-                               '%s: %s' % (type(exc).__name__, exc))
+                self._save_terminal(request_id, args_hash, 'failed', None,
+                                    '%s: %s' % (type(exc).__name__, exc))
+                return True
+            if time.time() >= deadline:
+                self._save_terminal(
+                    request_id, record['args_hash'], 'expired', None,
+                    'request expired before execution')
+                return True
+            try:
+                result = self._dispatch(record['operation'], record['args'])
+            except Exception as exc:
+                self._save_terminal(
+                    request_id, record['args_hash'], 'failed', None,
+                    '%s: %s' % (type(exc).__name__, exc))
+                return True
+            try:
+                late = time.time() >= deadline
+                self._terminal(request_id, record['args_hash'], 'returned',
+                               result, None, late=late)
+            except Exception:
+                # Native execution returned successfully. Any later bookkeeping
+                # failure leaves returned evidence intact, or unknown if none
+                # could be persisted; it must never be rewritten as failed.
+                pass
         finally:
             if os.path.exists(running):
                 os.unlink(running)

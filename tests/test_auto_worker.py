@@ -440,6 +440,115 @@ def test_success_state_survives_response_publish_failure_and_is_repaired(
         worker.close()
 
 
+def test_successful_native_call_with_marker_create_failure_stays_unknown(
+        tmp_path, monkeypatch):
+    import qmt_bridge.auto_worker as auto_worker
+    from qmt_bridge.auto_worker import AutomaticWorker
+    from bigqmt_bridge.auto_transport import AutomaticTransport
+
+    api_calls = []
+
+    def download(*args):
+        api_calls.append(args)
+        return None
+
+    worker = AutomaticWorker(str(tmp_path), object(),
+                             {'download_history_data': download},
+                             downloads_enabled=True)
+    transport = AutomaticTransport({'bridge_dir': str(tmp_path), 'timeout': 1})
+    rid = transport.submit('download_kline', _download_args())
+    real_atomic_json = auto_worker.atomic_json
+
+    def fail_repair_marker(path, value):
+        if Path(path).parent.name == 'response_repairs':
+            raise OSError('injected marker create failure')
+        return real_atomic_json(path, value)
+
+    monkeypatch.setattr(auto_worker, 'atomic_json', fail_repair_marker)
+    try:
+        assert worker.poll() is True
+        assert transport.lookup(rid)['state'] == 'unknown'
+        assert len(api_calls) == 1
+    finally:
+        worker.close()
+
+
+def test_successful_native_call_with_marker_unlink_failure_stays_returned(
+        tmp_path, monkeypatch):
+    import qmt_bridge.auto_worker as auto_worker
+    from qmt_bridge.auto_worker import AutomaticWorker
+    from bigqmt_bridge.auto_transport import AutomaticTransport
+
+    api_calls = []
+
+    def download(*args):
+        api_calls.append(args)
+        return None
+
+    worker = AutomaticWorker(str(tmp_path), object(),
+                             {'download_history_data': download},
+                             downloads_enabled=True)
+    transport = AutomaticTransport({'bridge_dir': str(tmp_path), 'timeout': 1})
+    rid = transport.submit('download_kline', _download_args())
+    marker = tmp_path / 'response_repairs' / (rid + '.json')
+    real_unlink = auto_worker.os.unlink
+    failed = []
+
+    def fail_first_marker_unlink(path):
+        if Path(path) == marker and not failed:
+            failed.append(True)
+            raise OSError('injected marker unlink failure')
+        return real_unlink(path)
+
+    monkeypatch.setattr(auto_worker.os, 'unlink', fail_first_marker_unlink)
+    try:
+        assert worker.poll() is True
+        assert marker.exists()
+        assert transport.lookup(rid)['state'] == 'returned'
+        assert worker.poll() is True
+        assert not marker.exists()
+        assert len(api_calls) == 1
+    finally:
+        worker.close()
+
+
+def test_idle_repair_consumes_only_one_arbitrary_directory_entry(
+        tmp_path, monkeypatch):
+    import qmt_bridge.auto_worker as auto_worker
+    from qmt_bridge.auto_worker import AutomaticWorker
+
+    worker = AutomaticWorker(str(tmp_path), object(), {})
+    junk = tmp_path / 'response_repairs' / 'crash-left.tmp'
+    junk.write_text('partial', encoding='utf-8')
+    next_calls = []
+
+    class Entry:
+        name = junk.name
+        path = str(junk)
+
+    class ControlledEntries:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            next_calls.append(True)
+            if len(next_calls) > 1:
+                raise AssertionError('repair poll inspected more than one entry')
+            return Entry()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(auto_worker.os, 'scandir',
+                        lambda path: ControlledEntries())
+    try:
+        assert worker.poll() is True
+        assert len(next_calls) == 1
+        assert not junk.exists()
+    finally:
+        worker.close()
+
+
 def test_queued_dispatch_does_not_enumerate_terminal_history(tmp_path, monkeypatch):
     import qmt_bridge.auto_worker as auto_worker
     from qmt_bridge.auto_worker import AutomaticWorker
