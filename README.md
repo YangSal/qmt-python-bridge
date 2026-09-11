@@ -4,6 +4,10 @@
 
 GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridge)。Python 发行包名为 `bigqmt-data-bridge`，导入名为 `bigqmt_bridge`。
 
+后续独立开源开发从 [HANDOFF.md](HANDOFF.md) 开始，智能体先读 [AGENTS.md](AGENTS.md)。
+维护者本机开发目录为 `D:\bigqmt-data-bridge`。当前新增的 [M1a 能力清单](experiments/memory_v1/README.md)
+已完成诊断，内存通信、实时行情和交易仍未验收；不能把能力检查当作交易功能。
+
 **实验性 / Alpha · 数据只读 · 不下单 · 自动下载仅限已结束交易日 K 线且须显式 opt-in**
 
 `0.2.0a1` 新增独立的自动模式，可下载并严格校验股票、ETF、指数的 `1d`、`1m`、`5m` K 线；默认模式仍为 `history_mode=cache_only`，不会下载。正式入口已在 2026-09-11 完成[单日小样本验证](docs/research/2026-09-11-auto-worker-live.md)：三证券×三周期读回通过，其中三组 5 分钟实际触发下载，日线和 1 分钟命中缓存。自动模式不含交易、订阅、Tick、财务自动下载或生产切换，也尚未完成全面真实终端验收。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)属于更早的 `qualification_v1`，其证据与正式入口分开记录。
@@ -331,7 +335,7 @@ download_history_data2(...), download_financial_data2(...), download_index_weigh
 
 ```powershell
 Set-Location D:\bigqmt-data-bridge
-.\.venv\Scripts\python.exe -m pytest tests -q
+.\.venv\Scripts\python.exe -m pytest tests/ experiments/qualification_v1/test_qualification.py -q
 ```
 
 测试使用临时目录和合成数据，不连接真实 QMT。覆盖协议往返、损坏/超时/过期、锁、字段完整性、Tick 大整数和盘口、财务身份、采样对比、独立配置与 Python 3.6 语法。这里的 Python 3.6 检查是语法检查，不是完整的 Python 3.6 运行时认证。
@@ -341,6 +345,7 @@ Set-Location D:\bigqmt-data-bridge
 ```text
 bigqmt_bridge/          外部客户端、CLI、规范化、JSON字段契约
 qmt_bridge/            内置端策略、worker、文件协议（标准库）
+experiments/           独立验证工具，不代表正式传输或交易能力
 tests/                 离线回归测试
 skills/                可复制给智能体的技能
 docs/                  拆分设计、实施记录、验证与发布清单
@@ -348,6 +353,8 @@ config.example.json    legacy/cache_only 样例，缓存确认缺省为 false
 config.auto.example.json  auto 独立运行目录样例，下载能力仍需服务端 opt-in
 pyproject.toml         外部客户端安装元数据
 LICENSE                MIT
+HANDOFF.md             当前状态、证据、下一阶段开发交接
+AGENTS.md              本独立仓库的智能体开发与安全约定
 ```
 
 ### 源码交付
