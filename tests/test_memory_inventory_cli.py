@@ -12,6 +12,22 @@ ROOT = Path(__file__).parents[1]
 INSPECTOR_PATH = ROOT / "experiments" / "memory_v1" / "inspect_report.py"
 INVENTORY_PATH = ROOT / "experiments" / "memory_v1" / "strategy_inventory.py"
 SESSION = "a" * 32
+EXPECTED_MODULE_CALLABLES = {
+    "mmap": ("mmap",),
+    "_winapi": (
+        "CreateNamedPipe", "ConnectNamedPipe", "CreateFile", "ReadFile",
+        "WriteFile", "PeekNamedPipe", "SetNamedPipeHandleState", "CloseHandle",
+        "WaitForSingleObject", "CreateMutex", "ReleaseMutex",
+    ),
+    "_multiprocessing": ("SemLock",),
+    "ctypes": ("WinDLL",),
+    "socket": ("socket",),
+    "msvcrt": ("locking",),
+}
+EXPECTED_QMT_CALLABLES = (
+    "run_time", "schedule_run", "subscribe_quote", "subscribe_whole_quote",
+    "get_full_tick", "get_trade_detail_data", "passorder", "cancel",
+)
 
 
 def load(path, name):
@@ -33,7 +49,18 @@ def valid_report():
     return inventory.collect_capabilities(object(), {}, SESSION)
 
 
+def assert_fixed_inventory_names(report):
+    assert set(report["modules"]) == set(EXPECTED_MODULE_CALLABLES)
+    for module_name, names in EXPECTED_MODULE_CALLABLES.items():
+        module = report["modules"][module_name]
+        assert set(module["callables"]) == set(names)
+    assert set(report["qmt_callables"]) == {"globals", "ContextInfo"}
+    for side in ("globals", "ContextInfo"):
+        assert set(report["qmt_callables"][side]) == set(EXPECTED_QMT_CALLABLES)
+
+
 def test_valid_report_stays_explicitly_unverified(inspector, valid_report):
+    assert_fixed_inventory_names(valid_report)
     result = inspector.validate_report(valid_report, SESSION)
     assert result["protocol"] == "memory-inventory-v1"
     assert result["session_id"] == SESSION
@@ -46,6 +73,7 @@ def test_valid_report_stays_explicitly_unverified(inspector, valid_report):
     }
     assert "python" not in result
     assert "qmt_errors" not in result
+    assert_fixed_inventory_names(result)
 
 
 @pytest.mark.parametrize("mutation", [
@@ -105,6 +133,7 @@ def test_cli_accepts_task1_report_and_emits_sanitized_json(tmp_path, valid_repor
     assert output["state"] == "incomplete"
     assert "python" not in output
     assert "error" not in completed.stdout.lower()
+    assert_fixed_inventory_names(output)
 
 
 @pytest.mark.parametrize("payload", [
