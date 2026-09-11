@@ -135,8 +135,14 @@ M1a 覆盖设计第 4 节第一步；不覆盖双向挑战、10,000 条消息、
 
 ## Execution Status
 
-- [ ] Task 1 implemented and reviewed
+- [x] Task 1 implemented and reviewed
 - [ ] Task 2 implemented and reviewed
 - [ ] Whole-branch review and regression complete
-- [ ] User has run QMT inventory; report checked
+- [x] User has run QMT inventory; report checked
 - [ ] Follow-on M1b plan based on actual capabilities
+
+2026-09-11：用户已执行单次内置清单，外部校验器退出 0，状态保持 incomplete。
+实际能力及未验收项见 [脱敏实测记录](../../research/2026-09-11-memory-inventory-live.md)。
+Task 2 首次开发因服务容量中断，原始 RED 日志未恢复，不能声明该步骤已有完整证据；
+接续开发的时间格式修复单独记录了 RED/GREEN。任务步骤保留为原实施检查清单，
+完成及审查状态以本节为准。M1b 尚未执行，M1 和交易均未验收。
