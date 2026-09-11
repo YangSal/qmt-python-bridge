@@ -6,7 +6,7 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 
 **实验性 / Alpha · 数据只读 · 不下单 · 自动下载仅限已结束交易日 K 线且须显式 opt-in**
 
-`0.2.0a1` 新增独立的自动模式，可下载并严格校验股票、ETF、指数的 `1d`、`1m`、`5m` K 线；默认模式仍为 `history_mode=cache_only`，不会下载。自动模式不含交易、订阅、Tick、财务自动下载或生产切换，其正式新 worker 尚未完成真实终端验收。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)属于更早的 `qualification_v1`，不能代替本版本 live acceptance。
+`0.2.0a1` 新增独立的自动模式，可下载并严格校验股票、ETF、指数的 `1d`、`1m`、`5m` K 线；默认模式仍为 `history_mode=cache_only`，不会下载。正式入口已在 2026-09-11 完成[单日小样本验证](docs/research/2026-09-11-auto-worker-live.md)：三证券×三周期读回通过，其中三组 5 分钟实际触发下载，日线和 1 分钟命中缓存。自动模式不含交易、订阅、Tick、财务自动下载或生产切换，也尚未完成全面真实终端验收。2026-09-09 的[独立 P0/P1 实验](docs/research/2026-09-09-p0-p1-results.md)属于更早的 `qualification_v1`，其证据与正式入口分开记录。
 
 本项目从一个已有数据采集项目中提取。目标是保留外部 Python 的 pandas、研究和存储环境，让内置 Python 只承担有限的数据读取。它不是完整的 `xtquant` 替代品，也不保证任意券商版本、账号权限和数据种类均可用。
 
@@ -35,7 +35,7 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 |---|---|---|
 | 文件协议、锁、超时、结果完整性 | 已实现并有离线测试 | 不等于真实客户端稳定性验收 |
 | cache_only 日线 / 1分钟 / 5分钟 / Tick | 优先 `C.get_market_data_ex_ori`，外部构造 DataFrame | 新原始行情路径需要真实券商数据对照；缓存必须预先准备 |
-| auto 日线 / 1分钟 / 5分钟 | 独立 worker 对股票、ETF、指数逐单元下载并严格读回校验 | 仅已结束交易日；必须显式 opt-in；正式 worker 的真实终端验收仍待完成 |
+| auto 日线 / 1分钟 / 5分钟 | 独立 worker 对股票、ETF、指数逐单元下载并严格读回校验 | 仅已结束交易日；必须显式 opt-in；正式入口单日小样本通过，完整终端/生产验收仍待完成 |
 | 复权因子 | 支持事件日期、七字段规范化 | 历史样本有返回记录，仍需跨端逐值对照 |
 | 简版合约 | 可调用并保留返回字段 | 部分客户端公开封装只有约 30 个键，不能冒充完整合约 |
 | 板块树 / 成员 | 通过全局板块树接口及 ContextInfo 取成员 | 大 QMT 显示名称不等于原生分类 ID，不能按名字猜主键映射 |
