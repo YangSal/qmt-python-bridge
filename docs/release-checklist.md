@@ -12,7 +12,7 @@
 - [ ] 确认 `records/`、`states/`、`client_jobs/`、`response_repairs/`、请求/响应、日志、锁和证据没有进入 Git；`response_repairs/` 只被描述为有界修复标记，不是第二请求队列。
 - [ ] MIT 版权声明保留；没有把券商源码和依赖包误标为 MIT。
 - [ ] 单独确认行情数据使用/再分发许可；issue 演示用合成样本。
-- [ ] README 显著提示 Skill 本版仍为 legacy/cache_only，不让旧 Skill 静默教授 auto 下载语义；本阶段不修改 Skill。
+- [ ] Skill 本版仍为 legacy/cache_only，不让旧 Skill 静默教授 auto 下载语义；README 不包含智能体使用说明。
 - [ ] 不承诺全 xtquant 兼容、财务八表通过、生产无缝迁移或已达全市场性能。
 - [ ] 如曾在同一 QMT 进程导入 auto worker，不能把重新运行同一源码入口当成升级；安排安全客户端重启或版本化模块，并保留实际加载证据。
 - [ ] 确认自己选择的 GitHub 仓库可见性、remote 地址及发布版本，然后再 push。

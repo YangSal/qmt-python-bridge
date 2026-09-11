@@ -8,10 +8,11 @@ Perform all future bridge development here. Do not require or edit the original 
 data-collection repository, import its configuration/history, or change production jobs.
 Other contributors may use another checkout path; do not hardcode the maintainer's username.
 
-Read [HANDOFF.md](HANDOFF.md) before continuing development, then the relevant approved
+If a local HANDOFF.md exists, read it before continuing development; it is private,
+Git-ignored, and not required in a fresh checkout. Then read the relevant approved
 specification and execution status. Preserve unrelated working-tree changes.
 Use feature branches; do not merge main, force-push, publish releases, or switch production
-as an implied side effect of development. The current handoff branch is recorded in HANDOFF.md.
+as an implied side effect of development. Verify the current branch and remote with Git.
 
 ## Current scope
 
@@ -59,7 +60,8 @@ Use explicit `incomplete` status for unexecuted gates. Do not invent missing tes
 
 ## Open-source delivery
 
-Maintain README, HANDOFF, tests, supporting docs and the repository Skill.
+Maintain README, tests, supporting docs and the repository Skill. Keep any local
+HANDOFF.md updated without adding it to Git.
 The existing Skill covers legacy/cache_only only; auto and memory/trading need separate updates
 and validation before claiming coverage. Do not install the Skill automatically.
 Keep MIT attribution. Deliver source only: no installer builds, automatic Release or PyPI publish.

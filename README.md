@@ -4,8 +4,7 @@
 
 GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridge)。Python 发行包名为 `bigqmt-data-bridge`，导入名为 `bigqmt_bridge`。
 
-后续独立开源开发从 [HANDOFF.md](HANDOFF.md) 开始，智能体先读 [AGENTS.md](AGENTS.md)。
-维护者本机开发目录为 `D:\bigqmt-data-bridge`。当前新增的 [M1a 能力清单](experiments/memory_v1/README.md)
+当前新增的 [M1a 能力清单](experiments/memory_v1/README.md)
 已完成诊断，内存通信、实时行情和交易仍未验收；不能把能力检查当作交易功能。
 
 **实验性 / Alpha · 数据只读 · 不下单 · 自动下载仅限已结束交易日 K 线且须显式 opt-in**
@@ -28,7 +27,6 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 - [接口范围](#接口范围)
 - [故障排查](#故障排查)
 - [安全、性能和生产切换](#安全性能和生产切换)
-- [智能体 Skill](#智能体-skill)
 - [开发与发布](#开发与发布)
 
 ## 适用范围和当前状态
@@ -312,23 +310,6 @@ download_history_data2(...), download_financial_data2(...), download_index_weigh
 
 生产切换应是独立工作：逐通道只读对照、至少连续多个交易日验收、缓存自动供应与容量测试通过后，再安排停旧调度/启新调度。不要同时运行两个写入相同目标的采集器，不要在活跃采集目录热替换代码。保留回退条件，但原生权限已取消时不能承诺能回退。
 
-## 智能体 Skill
-
-> **警告：本版本附带的 Skill 仍只描述 legacy/cache_only 的 probe、sample 和 compare，不覆盖 auto 工作流。自动下载必须以本 README 和 [`docs/automatic-download.md`](docs/automatic-download.md) 为准；本阶段没有修改 Skill。**
-
-附带 [`skills/bigqmt-data-bridge/SKILL.md`](skills/bigqmt-data-bridge/SKILL.md)。这是本项目专用的参考技能，不是一般交易技能；包含实际命令、路径规则、采样契约和故障判定。
-
-使用方式任选一种：
-
-1. 在对话中提供该文件的路径，要求智能体先完整阅读，再执行指定的探测或取样任务。
-2. 将整个 `skills/bigqmt-data-bridge` 文件夹复制到智能体支持的技能目录。例如 Codex 的个人技能目录通常为 `%USERPROFILE%\.codex\skills`，也可放在目标项目的 `.agents\skills` 中，由该工具的发现机制加载。
-
-技能无需与源码相邻安装，不会自动寻找私人采集仓库。调用时提供**项目目录、外部 Python 路径、配置/IPC目录、明确北京时间日期和代码**。例如：
-
-> 使用 `$bigqmt-data-bridge`。项目在 `D:\bigqmt-data-bridge`，外部解释器是该项目 `.venv\Scripts\python.exe`，配置是 `config.local.json`。只读验证 `20260904` 的 `000001.SZ` 日线，保存证据，不重启 QMT、不下载、不写数据库。
-
-本仓库只是附带技能文件，不会自动安装到你的个人技能目录。技能不能赋予操作账号、安装券商依赖、发布数据或切换生产的额外权限。
-
 ## 开发与发布
 
 ### 运行离线测试
@@ -347,19 +328,16 @@ bigqmt_bridge/          外部客户端、CLI、规范化、JSON字段契约
 qmt_bridge/            内置端策略、worker、文件协议（标准库）
 experiments/           独立验证工具，不代表正式传输或交易能力
 tests/                 离线回归测试
-skills/                可复制给智能体的技能
 docs/                  拆分设计、实施记录、验证与发布清单
 config.example.json    legacy/cache_only 样例，缓存确认缺省为 false
 config.auto.example.json  auto 独立运行目录样例，下载能力仍需服务端 opt-in
 pyproject.toml         外部客户端安装元数据
 LICENSE                MIT
-HANDOFF.md             当前状态、证据、下一阶段开发交接
-AGENTS.md              本独立仓库的智能体开发与安全约定
 ```
 
 ### 源码交付
 
-后续维护以 GitHub 源码为交付物，不再构建或发布安装包。保留 README、tests、docs、skills 和字段资源，按上方命令验证源码；已有构建记录仅属于历史验证，不代表后续源码已经打包。不要把运行目录、真实样本、`dist/` 或 `build/` 上传。
+后续维护以 GitHub 源码为交付物，不再构建或发布安装包。保留 README、tests、docs 和字段资源，按上方命令验证源码；已有构建记录仅属于历史验证，不代表后续源码已经打包。不要把运行目录、真实样本、`dist/` 或 `build/` 上传。
 
 ### 准备 GitHub 发布
 
