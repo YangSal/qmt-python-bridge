@@ -150,4 +150,6 @@ Task 2 首次开发因服务容量中断，原始 RED 日志未恢复，不能�
 最终整分支审查及一次修复复审完成，无遗留问题；完整回归命令
 `python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q`
 结果为 287 passed（51.26 秒）。内置实测报告在最终校验器上重新校验，退出 0。
-代码保留在 `codex/stock-etf-trading` 功能分支，本阶段没有合并或推送。
+上述里程碑完成时，代码保留在 `codex/stock-etf-trading` 功能分支，当时没有合并或推送。
+后续交接已推送该功能分支；2026-09-11 用户另行授权合入 `main`，
+当前集成安排与后续开发入口见 [HANDOFF.md](../../../HANDOFF.md)。

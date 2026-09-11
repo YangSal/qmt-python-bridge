@@ -6,8 +6,10 @@
 
 - 开源仓库：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridge)。
 - 本机唯一开发目录：`D:\bigqmt-data-bridge`。后续代码、测试、计划、文档均在这里维护。
-- 本次交接分支：`codex/stock-etf-trading`；交接前代码里程碑为 `a1f5f27`。
-  此次更新推送功能分支，不合并 `main`。接手时用 Git 核对当前分支、远端和工作区，
+- 2026-09-11 用户明确要求将更新合入 `main`；本次集成来源为
+  `codex/stock-etf-trading`（原交接提交 `da0bc7b`，代码里程碑 `a1f5f27`），
+  目标为 `main` / `origin/main`。原先仅推送功能分支的交接安排由本次授权替代。
+  合并后从 `main` 新建功能分支继续开发。接手时用 Git 核对当前分支、远端和工作区，
   不将本文的历史提交号当成永远有效的最新版本。
 - 不再回到原私人数据采集项目开发桥接，不复制其配置、数据库凭据、代码历史或生产调度。
   本仓库应能独立阅读、测试和维护；接手者不需要原聊天记录或被忽略的开发临时记录。
@@ -45,6 +47,10 @@
 
 交接前完整回归为 **287 passed**，代码经过逐任务与整分支审查。
 后续修改必须重跑测试，不能直接沿用该数字宣称当前通过。
+本次 main 集成前已用现有外部 Python 3.10.20 重跑
+`python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q`：
+**287 passed（51.58 秒）**；`git diff --check` 通过，独立合并审查无阻塞问题。
+本次仅验证离线代码和文档，没有重跑 QMT 终端诊断；M1b 及其后阶段仍为 incomplete。
 初次 M1a 校验器开发曾因服务容量中断，原始 RED 日志未恢复；后续修复有独立 RED/GREEN，
 不要补造历史测试证据。
 
