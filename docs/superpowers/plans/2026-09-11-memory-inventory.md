@@ -136,8 +136,8 @@ M1a 覆盖设计第 4 节第一步；不覆盖双向挑战、10,000 条消息、
 ## Execution Status
 
 - [x] Task 1 implemented and reviewed
-- [ ] Task 2 implemented and reviewed
-- [ ] Whole-branch review and regression complete
+- [x] Task 2 implemented and reviewed
+- [x] Whole-branch review and regression complete
 - [x] User has run QMT inventory; report checked
 - [ ] Follow-on M1b plan based on actual capabilities
 
@@ -146,3 +146,8 @@ M1a 覆盖设计第 4 节第一步；不覆盖双向挑战、10,000 条消息、
 Task 2 首次开发因服务容量中断，原始 RED 日志未恢复，不能声明该步骤已有完整证据；
 接续开发的时间格式修复单独记录了 RED/GREEN。任务步骤保留为原实施检查清单，
 完成及审查状态以本节为准。M1b 尚未执行，M1 和交易均未验收。
+
+最终整分支审查及一次修复复审完成，无遗留问题；完整回归命令
+`python -m pytest tests/ experiments/qualification_v1/test_qualification.py -q`
+结果为 287 passed（51.26 秒）。内置实测报告在最终校验器上重新校验，退出 0。
+代码保留在 `codex/stock-etf-trading` 功能分支，本阶段没有合并或推送。
