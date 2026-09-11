@@ -79,7 +79,7 @@ def _validate_qmt(callables, errors):
 
 def _validate_timestamp(value):
     if (not isinstance(value, str) or not value.endswith("Z") or
-            len(value) > 40 or len(value) < 21 or value[10] != "T"):
+            len(value) > 40 or len(value) < 20 or value[10] != "T"):
         _fail("invalid captured_at_utc")
     try:
         parsed = datetime.datetime.fromisoformat(value[:-1] + "+00:00")

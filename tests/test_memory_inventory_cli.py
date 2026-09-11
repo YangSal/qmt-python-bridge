@@ -76,6 +76,13 @@ def test_valid_report_stays_explicitly_unverified(inspector, valid_report):
     assert_fixed_inventory_names(result)
 
 
+def test_accepts_producer_timestamp_without_microseconds(inspector, valid_report):
+    timestamp = valid_report["captured_at_utc"]
+    valid_report["captured_at_utc"] = timestamp.split(".", 1)[0].rstrip("Z") + "Z"
+    assert len(valid_report["captured_at_utc"]) == 20
+    assert inspector.validate_report(valid_report, SESSION)["state"] == "incomplete"
+
+
 @pytest.mark.parametrize("mutation", [
     lambda r: r.update(protocol="wrong"),
     lambda r: r.pop("pid"),

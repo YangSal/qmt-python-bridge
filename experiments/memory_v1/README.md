@@ -12,9 +12,10 @@
 
    ```powershell
    $sessionId = python -c "import uuid; print(uuid.uuid4().hex)"
+   $sessionId
    ```
 
-   将命令打印的 32 位小写十六进制值替换进 `SESSION_ID = ""`。这是一次性新鲜标识，
+   第二行会显示可复制的 32 位小写十六进制值；将它替换进 `SESSION_ID = ""`。这是一次性新鲜标识，
    不是认证凭据；不要把真实会话值或原始报告提交到公开仓库。
 3. 取消 QMT 的“启动本地 Python”选项，然后由用户正常加载并运行策略。
 
