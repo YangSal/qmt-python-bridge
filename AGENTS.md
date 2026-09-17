@@ -64,6 +64,9 @@ Use explicit `incomplete` status for unexecuted gates. Do not invent missing tes
 
 Maintain README, tests, supporting docs and the repository Skill. Keep any local
 HANDOFF.md updated without adding it to Git.
+Keep README focused on project purpose, capabilities, usage and product limitations.
+Put per-run dates, sample counts, collection progress and debugging history in dedicated
+research/validation documents, not README. Link detailed operating guides from README.
 The existing Skill covers legacy/cache_only only; auto and memory/trading need separate updates
 and validation before claiming coverage. Do not install the Skill automatically.
 Keep MIT attribution. Deliver source only: no installer builds, automatic Release or PyPI publish.
