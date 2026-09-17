@@ -11,8 +11,10 @@ Other contributors may use another checkout path; do not hardcode the maintainer
 If a local HANDOFF.md exists, read it before continuing development; it is private,
 Git-ignored, and not required in a fresh checkout. Then read the relevant approved
 specification and execution status. Preserve unrelated working-tree changes.
-Use feature branches; do not merge main, force-push, publish releases, or switch production
-as an implied side effect of development. Verify the current branch and remote with Git.
+Develop directly on `main` by default, as requested by the maintainer. Use a separate
+branch only when the user explicitly requests it or provides a different workflow.
+Verify the current branch and remote with Git. Do not force-push, publish releases,
+or switch production as an implied side effect of development.
 
 ## Current scope
 
