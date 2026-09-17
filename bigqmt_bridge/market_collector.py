@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 from qmt_bridge.auto_protocol import FileLock
-from qmt_bridge.protocol import atomic_json, load_json
-from .archive import verify_bars
+from qmt_bridge.protocol import load_json
+from .archive import verify_bars, write_json as atomic_json
 from .auto_backend import AutomaticBackend
 from .backend import create_backend
 from .collector import _scope, collect_history
@@ -476,6 +476,10 @@ def run_plan(source, output_dir, *, max_seconds=300, max_units=100, unit_seconds
                 _transition(item, counts, 'running', error=None, reason=None)
                 atomic_json(shard_root / 'progress.json', report)
                 try:
+                    budget = min(budget, deadline - time.monotonic())
+                    if budget <= 0:
+                        stop_reason = 'budget_exhausted'
+                        raise TimeoutError('collection budget exhausted during progress publication')
                     if item['kind'] == 'history':
                         result = collect_history(source, [item['code']], [item['period']], [item['date']],
                                                  _cell_root(shard_root, item), max_seconds=budget)

@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 
 from qmt_bridge.auto_protocol import FileLock, validate_download
-from qmt_bridge.protocol import atomic_json, load_json
-from .archive import write_bars, verify_bars
+from qmt_bridge.protocol import load_json
+from .archive import write_bars, verify_bars, write_json as atomic_json
 from .auto_backend import AutomaticBackend
 from .backend import create_backend
 from .config import load_config
@@ -124,6 +124,9 @@ def collect_history(source, codes, periods, dates, output_dir, max_seconds=300):
                         raise TimeoutError('collection budget exhausted; resume the same output directory')
                     item.update(state='running', error=None, file=None, action='qmt_read')
                     _save(root, report)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError('collection budget exhausted during progress publication')
                     # A download first probes, then runs one cell with its own deadline.
                     # Reserve at most half the remaining budget for each part.
                     source.transport.timeout = min(original_timeout, remaining / 2)

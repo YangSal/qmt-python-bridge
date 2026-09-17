@@ -43,6 +43,28 @@ def saved_rows(tmp_path):
         return [json.loads(line) for line in stream]
 
 
+def test_progress_write_exhausting_budget_starts_no_download(rig, tmp_path, monkeypatch):
+    module = collector()
+    backend = source(rig)
+    clock, downloads = [0.], []
+    save = module._save
+    def delayed_save(root, report):
+        save(root, report)
+        if any(item['state'] == 'running' for item in report['items']):
+            clock[0] = .2
+    def unexpected_download(*args, **kwargs):
+        downloads.append(clock[0])
+        raise RuntimeError('download started after budget')
+    monkeypatch.setattr(module.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(module, '_save', delayed_save)
+    monkeypatch.setattr(backend, 'download_history_data2', unexpected_download)
+    report = module.collect_history(backend, ['000001.SZ'], ['1d'], ['20260105'],
+                                    tmp_path/'output', max_seconds=.1)
+    assert report['state'] == 'incomplete'
+    assert downloads == []
+    assert 'budget exhausted' in report['items'][0]['error']
+
+
 def test_cold_history_download_is_archived_with_original_time(rig, tmp_path):
     report = collect(rig, tmp_path)
     assert report['state'] == 'complete'

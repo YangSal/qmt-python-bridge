@@ -11,7 +11,7 @@ import re
 import time
 from pathlib import Path
 
-from qmt_bridge.protocol import atomic_json
+from .archive import write_json as atomic_json
 from .memory_session import Connection, load_config
 
 

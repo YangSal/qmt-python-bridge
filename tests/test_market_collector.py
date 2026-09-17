@@ -58,6 +58,26 @@ def progress(tmp_path):
     return [json.loads(p.read_text('utf-8')) for p in sorted((tmp_path / 'market/shards').glob('*/progress.json'))]
 
 
+def test_progress_write_exhausting_budget_starts_no_child_collection(rig, tmp_path, monkeypatch):
+    freeze(rig, tmp_path)
+    module = market()
+    clock, calls = [0.], []
+    publish = module.atomic_json
+    def delayed_publish(path, value):
+        publish(path, value)
+        if str(path).endswith('progress.json') and any(i['state'] == 'running' for i in value['items']):
+            clock[0] = .2
+    def unexpected_collect(*args, **kwargs):
+        calls.append(clock[0])
+        raise RuntimeError('child started after budget')
+    monkeypatch.setattr(module.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(module, 'atomic_json', delayed_publish)
+    monkeypatch.setattr(module, 'collect_history', unexpected_collect)
+    result = module.run_plan(rig[1], tmp_path/'market', max_seconds=.1)
+    assert calls == []
+    assert result['stop_reason'] == 'budget_exhausted'
+
+
 def test_freeze_exact_sector_membership_deduplicates_without_inferred_classification(rig, tmp_path):
     plan = market().create_plan(rig[1], tmp_path / 'market', ['20260813', '20260814'],
         ['1d', '1m', '5m'], sectors=list(rig[0].sectors), shard_size=2)

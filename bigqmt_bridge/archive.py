@@ -2,10 +2,28 @@
 import gzip
 import hashlib
 import json
+import time
 from pathlib import Path
 
-from qmt_bridge.protocol import atomic_bytes, json_value
+from qmt_bridge.protocol import atomic_bytes, atomic_json as _atomic_json, json_value
 from .kline import FIELDS, validate_kline
+
+
+def write_json(path, value):
+    """Publish consumer metadata with a bounded retry for transient file sharing.
+
+    Only the local write is repeated, never a QMT call or download submission.
+    Permanent denial still raises and leaves the previous atomic file intact.
+    """
+    deadline = time.monotonic() + .5
+    while True:
+        try:
+            return _atomic_json(path, value)
+        except PermissionError:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(.01, remaining))
 
 
 def write_bars(path, frame, code, period, date):
