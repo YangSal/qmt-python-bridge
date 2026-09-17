@@ -18,9 +18,11 @@ as an implied side effect of development. Verify the current branch and remote w
 
 - Delivered package: experimental read-only historical file bridge, with opt-in K-line downloads.
 - M1a: embedded runtime capability inventory implemented and tested; this is not a transport.
-- Real-time memory transport and trading are not yet implemented/accepted. Never claim full
+- M1b memory transport passed the actual Python 3.6.8 synthetic and controlled recovery gates.
+  Read-only polling market snapshots and the external archive consumer are implemented;
+  actual market acceptance remains separate. Trading is not implemented. Never claim full
   xtquant compatibility or trading readiness from module presence or offline test results.
-- Next milestone: M1b, governed by
+- Scope and remaining acceptance gates are governed by
   `docs/superpowers/specs/2026-09-11-stock-etf-bridge-design.md`.
 
 ## Runtime and safety

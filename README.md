@@ -1,11 +1,27 @@
 # QMT Python Bridge
 
-让外部 Python 通过本机文件队列读取大 QMT 内置 Python 暴露的数据接口。
+让外部 Python 读取大 QMT 内置 Python 暴露的数据接口：历史走文件桥，实时实验走本机内存通道。
 
 GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridge)。Python 发行包名为 `bigqmt-data-bridge`，导入名为 `bigqmt_bridge`。
 
 当前新增的 [M1a 能力清单](experiments/memory_v1/README.md)
-已完成诊断，内存通信、实时行情和交易仍未验收；不能把能力检查当作交易功能。
+已完成诊断。新增[命名管道验证与行情消费者](docs/memory-transport.md)，每个终端需单独
+完成合成、故障和用户重启门禁；不能把能力检查或离线测试当作终端验收。
+
+新增[外部采集测试程序](docs/collector.md)：使用本桥自动下载/读取历史 K 线，按证券、
+周期、日期保存 gzip JSONL 到独立硬盘目录，支持文件完整性检查与断点续采，不入数据库。
+全市场及复权事件使用[分片续采程序](docs/market-collector.md)。新实时消费者为
+`python -m bigqmt_bridge.realtime_collector`；旧 `realtime-check` 仍只是能力缺口提示。
+内存行情支持指定证券订阅与最新快照轮询，逐笔增量完整性和交易尚不提供。
+需要同时测试历史和实时时，可生成[统一 QMT 入口](docs/memory-transport.md#统一采集入口)，
+QMT 只运行一个采集策略，外部消费者分别落盘。
+
+2026-09-17 的[统一入口终端实测](docs/research/2026-09-17-unified-collector-live.md)：
+内置 Python 3.6.8 的内存通道及手动停止/恢复通过；历史采集同时运行时，股票和 ETF
+的 60 秒实时采样收到 118 组快照、236 条新鲜行情，源时间更新 39 次，归档校验和退订通过。
+已冻结两日期、7,872 证券、55,104 单元的全市场历史/复权任务并恢复续采，**全量尚未完成**；
+部分指数分钟线未通过完整网格校验，保留为 incomplete，不冒充下载成功。
+采集 CLI、资格测试程序和自动化测试源码均随仓库提供；实际行情、认证配置和运行日志不随仓库发布。
 
 **实验性 / Alpha · 数据只读 · 不下单 · 自动下载仅限已结束交易日 K 线且须显式 opt-in**
 
@@ -45,7 +61,8 @@ GitHub：[YangSal/qmt-python-bridge](https://github.com/YangSal/qmt-python-bridg
 | 财务八表 | 已有字段契约和验证逻辑 | 部分内置封装仍要求 pandas；不保证可运行或完整 |
 | `download_*` 接口 | cache_only 仅检查人工缓存确认；auto 的 `download_history_data2` 执行持久任务 | auto 仅在 `state=verified` 且 job-level `errors` 为空时成功；不含 Tick、财务、权重下载 |
 | 原生 xtquant 基线 | CLI 可选，使用本地缓存接口 | 必须有仍可连接的授权原生环境；导入成功不代表连通 |
-| 交易、实时订阅、任意代码执行 | 不提供 | 没有 `XtQuantTrader`、下单、撤单或任意 RPC |
+| 指定证券内存行情 | 统一或独立入口；订阅/退订、最新快照轮询、健康状态、外部用户归档；两证券真实短采样通过 | 最多10只；每终端须先通过 M1b；不保证逐笔增量完整性，不开放全推 |
+| 交易、任意代码执行 | 不提供 | 没有 `XtQuantTrader`、下单、撤单或任意 RPC |
 
 已有离线测试使用合成数据和模拟 ContextInfo。即使全部测试通过，也不能据此宣称财务、完整合约或全市场 Tick 已具备生产接管能力。正式接入前应在自己的券商客户端重做验收。
 
@@ -155,7 +172,7 @@ python -m bigqmt_bridge download --config config.auto.local.json --codes 000001.
 python -m bigqmt_bridge download-status --config config.auto.local.json --job-id <returned-id> --output evidence/auto-status.json
 ```
 
-完整的加载、同 ID 续查、unknown 不重发、多日交易日历和 Python 调用说明见[自动 K 线下载指南](docs/automatic-download.md)。正式新 worker 尚未在真实终端加载验收，不可据离线测试或旧实验入口直接接管生产。
+完整的加载、同 ID 续查、unknown 不重发、多日交易日历和 Python 调用说明见[自动 K 线下载指南](docs/automatic-download.md)。正式入口已有单日小样本实测，完整终端及生产验收仍未完成。
 
 任务的 item `state` 保留既有下载/校验证据；本次 probe 或协议 freshness 失败记录在 job-level `errors`，因此调用方必须同时检查 `state=verified` 和 `errors=[]`。新一轮调用会在 probe 前持久化 `download refresh in progress`，并让该 marker 贯穿全部逐项读回；只有整轮结束后才清除，不会在 probe 刚成功或部分 item 刚刷新时把旧 aggregate 当成新鲜成功。
 

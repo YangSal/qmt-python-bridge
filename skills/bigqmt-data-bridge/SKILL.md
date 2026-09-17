@@ -7,6 +7,16 @@ description: Use when an agent needs to install, probe, sample, compare, or trou
 
 本技能服务于开源项目 `bigqmt-data-bridge`，外部包名 `bigqmt_bridge`，内置包名 `qmt_bridge`。它不是完整 xtquant 兼容层。先完整阅读本文件；需要更详细部署或接口说明时，读取用户指定源码根目录的 README.md 和实际 `--help`，不假设技能目录就是源码目录。
 
+**适用范围仅为 legacy/cache_only。** 本文“download_* 只确认缓存”等结论不适用于
+独立 auto 后端。新增外部磁盘采集测试程序见源码根的 `docs/collector.md`，其终端证据见
+`docs/research/2026-09-17-collector-live.md`；这些链接不表示本技能已验证 auto 或实时
+工作流。不要用本技能的旧策略/缓存前提配置新采集器，也不要自动安装技能。
+
+全市场消费者见 `docs/market-collector.md`；命名管道、独立版本化运行目录、实际 QMT
+合成/重启门禁和实时消费者见 `docs/memory-transport.md`，行情语义见
+`docs/market-memory.md`。这些新入口有独立配置和验收报告，不继承本文 cache_only 的
+文件 IPC 或人工缓存语义；本 Skill 的旧操作流程仍不宣称覆盖新入口。
+
 ## 定位与环境
 
 从任务取得源码根目录、外部 Python 3.10+ 解释器、配置或 IPC 目录。若无法确定，先只读检查用户指定目录，仍缺失则询问；不要搜索或加载其他私人项目配置。

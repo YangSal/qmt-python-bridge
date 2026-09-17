@@ -1,0 +1,10 @@
+{
+  "backend": "file_bridge",
+  "history_mode": "auto",
+  "bridge_dir": "D:/bigqmt-market-runtime",
+  "cache_prepared": false,
+  "timeout": 5,
+  "download_timeout": 30,
+  "poll_interval": 0.005,
+  "batch_size": 10
+}

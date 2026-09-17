@@ -1,4 +1,5 @@
 """Bounded durable client transport for the automatic K-line worker."""
+import gzip
 import math
 import os
 import time
@@ -130,6 +131,32 @@ class AutomaticTransport(object):
         return state if state is not None else response
 
     def lookup(self, request_id):
+        """Read existing evidence, tolerating brief Windows sharing denials."""
+        return self._lookup_with_retry(request_id)
+
+    def _lookup_with_retry(self, request_id, deadline=None):
+        # CRT open() can map a Windows sharing violation to PermissionError
+        # without winerror. Retry only reads, never publication or native work.
+        retry_deadline = time.monotonic() + min(.25, self.timeout)
+        if deadline is not None:
+            retry_deadline = min(retry_deadline, deadline)
+        while True:
+            try:
+                return self._lookup_once(request_id)
+            except PermissionError as exc:
+                remaining = retry_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise QmtDataError('automatic QMT journal read unavailable for %s: %s' %
+                                       (request_id, exc)) from exc
+                time.sleep(min(.01, remaining))
+            except gzip.BadGzipFile as exc:
+                raise QmtDataError('corrupt automatic QMT journal for %s: %s' %
+                                   (request_id, exc)) from exc
+            except OSError as exc:
+                raise QmtDataError('automatic QMT journal read unavailable for %s: %s' %
+                                   (request_id, exc)) from exc
+
+    def _lookup_once(self, request_id):
         try:
             check_id(request_id)
         except Exception as exc:
@@ -150,6 +177,8 @@ class AutomaticTransport(object):
                 request_id, record, state_path, response_path)
             if terminal is not None:
                 return terminal
+        except OSError:
+            raise
         except Exception as exc:
             raise QmtDataError('corrupt automatic QMT journal for %s: %s' %
                                (request_id, exc)) from exc
@@ -165,6 +194,8 @@ class AutomaticTransport(object):
                 self.root / 'responses' / (request_id + '.json'))
             if terminal is not None:
                 return terminal
+        except OSError:
+            raise
         except Exception as exc:
             raise QmtDataError('corrupt automatic QMT journal for %s: %s' %
                                (request_id, exc)) from exc
@@ -177,7 +208,7 @@ class AutomaticTransport(object):
             raise ValueError('timeout must be positive')
         deadline = time.monotonic() + timeout
         while True:
-            result = self.lookup(request_id)
+            result = self._lookup_with_retry(request_id, deadline)
             if result['state'] != 'pending':
                 return result
             remaining = deadline - time.monotonic()
